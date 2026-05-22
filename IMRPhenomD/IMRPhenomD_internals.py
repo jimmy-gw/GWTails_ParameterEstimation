@@ -89,11 +89,16 @@ def PNPhasingSeriesTaylorF2(eta,chis,chia):
     v3 = -16*np.pi
     v4 = 5/72*(3058673/7056+5429/7*eta+617*eta**2)
     v5 = 5/9*np.pi*(7729/84-13*eta)
-    vlogv5 = 5/3*np.pi*(7729/84-13*eta)
+    
+    
+    # # # # # Logarithmic terms at 2.5PN, 3PN order - see arXiv:0907.0700, Eq. 3.18 # # # # #
+    vlogv5 = 5/3*np.pi*(7729/84-13*eta) # Logarithmic term at 2.5PN order
+    vlogv6 = -6848/21 # Another logarithmic term at 3PN order    
+    
+    
     v6 = (11583231236531/4694215680-640/3*np.pi**2-6848/21*imrc.GAMMA) \
             +(-15737765635/3048192+2255/12*np.pi**2)*eta+76055/1728*eta**2-127825/1296*eta**3 \
-            +-6848/21*np.log(4.)
-    vlogv6 = -6848/21
+            +-6848/21*np.log(4.)    
     v7 = np.pi*(77096675/254016+378515/1512*eta-74045/756*eta**2)
 
 #     Compute 2.0PN SS, QM, and self-spin */
