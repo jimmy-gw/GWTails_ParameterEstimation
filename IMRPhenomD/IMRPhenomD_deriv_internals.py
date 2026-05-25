@@ -12,9 +12,9 @@ from IMRPhenomD.IMRPhenomD_internals import amp0Func,ComputeDeltasFromCollocatio
 #from IMRPhenomD_internals import AmpIn
 
 @njit()
-def PhiInsPrefactorsMt(eta,Mt_sec,chis,chia,chi):
+def PhiInsPrefactorsMt(eta,Mt_sec,chis,chia,chi,lambda25=0,lambda3=0):
     """Helper function to get the prefactors for PhiIns"""
-    v,vlogv = PNPhasingSeriesTaylorF2(eta,chis,chia)
+    v,vlogv = PNPhasingSeriesTaylorF2(eta,chis,chia,lambda25,lambda3)
     #  # PN phasing series
     minus_five_thirds = v[0]/Mt_sec**(5/3)/np.pi**(5/3)
     minus_one = v[2]/Mt_sec**(3/3)/np.pi
@@ -28,7 +28,7 @@ def PhiInsPrefactorsMt(eta,Mt_sec,chis,chia,chi):
     third_with_logv = vlogv[6]*Mt_sec**(1/3)*np.pi**(1/3)
 
     #higher order terms that were calibrated for PhenomD
-    #TODO check pis on these terms
+    #TODO check pis on these terms <- not jimmy's note
     sigmas = sigmaFits(eta,chi)
     one = sigmas[0]/eta*Mt_sec**(3/3)
     four_thirds = 3/4*sigmas[1]/eta*Mt_sec**(4/3)

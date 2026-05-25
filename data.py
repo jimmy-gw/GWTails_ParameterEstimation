@@ -14,8 +14,9 @@ log_dist_inj = 58.07
 phic_inj = np.pi / 1.2
 x_inj = np.array([m1_inj, m2_inj, chi1_inj, chi2_inj, log_dist_inj, phic_inj])
 
-# make data waveform object
+# make data waveform objects
 data_h22 = wg.get_h22(x_inj)
+#data_h22_notails = wg.get_h22(x_inj) # add toggle param?
 
 # amplitude and phase of data in frequency-domain
 data_amp, data_phase = np.array(data_h22.amp), np.array(data_h22.phase)

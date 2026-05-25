@@ -62,7 +62,7 @@ def get_h22(x):
 # get frequency-domain waveform
 def FD_waveform(x):
     h22 = get_h22(x)
-    return h22.amp * np.exp(-1.j * h22.phase)
+    return h22.amp * np.exp(-1.j * h22.phase) # add log term suppression here?
 
 
 # compute partial derivative of frequency-domain waveform

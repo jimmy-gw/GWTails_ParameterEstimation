@@ -65,7 +65,9 @@ def PNPhasingSeriesTaylorF2(eta,chis,chia):
     m1,   Mass of body 1, in Msol
     m2,   Mass of body 2, in Msol
     chi1, Component of dimensionless spin 1 along Lhat
-    chi2, Component of dimensionless spin 2 along Lhat"""
+    chi2, Component of dimensionless spin 2 along Lhat
+    lambda25, toggle for including (0) or excluding (1) 2.5PN log term
+    lambda3, toggle for including (0) or excluding (1) 3PN log term"""
 
     if eta<0.25:
         delta = np.sqrt(1-4*eta)
@@ -92,13 +94,14 @@ def PNPhasingSeriesTaylorF2(eta,chis,chia):
     
     
     # # # # # Logarithmic terms at 2.5PN, 3PN order - see arXiv:0907.0700, Eq. 3.18 # # # # #
-    vlogv5 = 5/3*np.pi*(7729/84-13*eta) # Logarithmic term at 2.5PN order
-    vlogv6 = -6848/21 # Another logarithmic term at 3PN order    
+    vlogv5 = 5/3*np.pi*(7729/84-13*eta) # Logarithmic term at 2.5PN order; PN corrections to 1st-order tail
+    vlogv6 = -6848/21 # Another logarithmic term at 3PN order; tail-of-tail
     
     
     v6 = (11583231236531/4694215680-640/3*np.pi**2-6848/21*imrc.GAMMA) \
             +(-15737765635/3048192+2255/12*np.pi**2)*eta+76055/1728*eta**2-127825/1296*eta**3 \
-            +-6848/21*np.log(4.)    
+            +-6848/21*np.log(4.)
+    
     v7 = np.pi*(77096675/254016+378515/1512*eta-74045/756*eta**2)
 
 #     Compute 2.0PN SS, QM, and self-spin */
