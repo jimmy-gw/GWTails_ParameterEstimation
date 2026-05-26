@@ -57,7 +57,7 @@ class AmpPhaseFDWaveform:
 
 ########################################/
 @njit()
-def PNPhasingSeriesTaylorF2(eta,chis,chia):
+def PNPhasingSeriesTaylorF2(eta,chis,chia,lambda25=0,lambda3=0):
     """ From LALSimInspiralPNCoefficients.c
     The phasing function for TaylorF2 frequency-domain waveform.
     This function is tested in ../test/PNCoefficients.c for consistency
@@ -66,8 +66,7 @@ def PNPhasingSeriesTaylorF2(eta,chis,chia):
     m2,   Mass of body 2, in Msol
     chi1, Component of dimensionless spin 1 along Lhat
     chi2, Component of dimensionless spin 2 along Lhat
-    lambda25, toggle for including (0) or excluding (1) 2.5PN log term
-    lambda3, toggle for including (0) or excluding (1) 3PN log term"""
+    """
 
     if eta<0.25:
         delta = np.sqrt(1-4*eta)
@@ -128,7 +127,7 @@ def PNPhasingSeriesTaylorF2(eta,chis,chia):
 
 #     At the very end, multiply everything in the series by pfaN */
     v = (pfaN*v0,pfaN*v1,pfaN*v2,pfaN*v3,pfaN*v4,pfaN*v5,pfaN*v6,pfaN*v7)
-    vlogv = (0.,0.,0.,0.,0.,pfaN*vlogv5,pfaN*vlogv6,0.)
+    vlogv = (0.,0.,0.,0.,0.,(1-lambda25)*pfaN*vlogv5,(1-lambda3)*pfaN*vlogv6,0.)
 
     return v,vlogv
 
@@ -640,8 +639,8 @@ def sigmaFits(eta,chi):
     return (sigma1,sigma2,sigma3,sigma4)
 
 @njit()
-def PhiInsPrefactors(eta,chis,chia,chi):
-    v,vlogv = PNPhasingSeriesTaylorF2(eta,chis,chia)
+def PhiInsPrefactors(eta,chis,chia,chi,lambda25=0,lambda3=0):
+    v,vlogv = PNPhasingSeriesTaylorF2(eta,chis,chia,lambda25,lambda3)
     #  # PN phasing series
     minus_five_thirds = v[0]/np.pi**(5/3)
     minus_one = v[2]/np.pi

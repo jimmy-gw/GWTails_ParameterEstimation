@@ -1,0 +1,1 @@
+'''MCMC analysis for parameter estimation of toggling parameters lambda25 and lambda3.'''

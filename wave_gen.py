@@ -30,7 +30,7 @@ df = f[1] - f[0]
 
 # get waveform object (for l=2, m=2 mode)
 # input parameters as array in order described above
-def get_h22(x):
+def get_h22(x, lambda25=0,lambda3=0):
             
     # mass in solar masses
     # distance in ln(luminosity distance / meter)
@@ -54,15 +54,15 @@ def get_h22(x):
 
     #the first evaluation of the amplitudes and phase will always be much slower, because it must compile everything
     h22 = AmpPhaseFDWaveform(Nf, f, amp_imr, phase_imr, time_imr, timep_imr)
-    h22 = IMRPhenomDGenerateh22FDAmpPhase(h22, f, phic, MfRef_in, m1_SI, m2_SI, chi1, chi2, distance)
+    h22 = IMRPhenomDGenerateh22FDAmpPhase(h22, f, phic, MfRef_in, m1_SI, m2_SI, chi1, chi2, distance, lambda25, lambda3)
     
     return h22
 
 
 # get frequency-domain waveform
-def FD_waveform(x):
-    h22 = get_h22(x)
-    return h22.amp * np.exp(-1.j * h22.phase) # add log term suppression here?
+def FD_waveform(x,lambda25=0,lambda3=0):
+    h22 = get_h22(x, lambda25, lambda3)
+    return h22.amp * np.exp(-1.j * h22.phase)
 
 
 # compute partial derivative of frequency-domain waveform

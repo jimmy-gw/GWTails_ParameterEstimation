@@ -12,7 +12,7 @@ from IMRPhenomD.IMRPhenomD_internals import amp0Func,ComputeDeltasFromCollocatio
 #from IMRPhenomD_internals import AmpIn
 
 @njit()
-def PhiInsPrefactorsMt(eta,Mt_sec,chis,chia,chi,lambda25=0,lambda3=0):
+def PhiInsPrefactorsMt(eta,Mt_sec,chis,chia,chi, lambda25=0,lambda3=0):
     """Helper function to get the prefactors for PhiIns"""
     v,vlogv = PNPhasingSeriesTaylorF2(eta,chis,chia,lambda25,lambda3)
     #  # PN phasing series
@@ -131,14 +131,14 @@ def AmpMRDAnsatzInplace(Amps,fs,Mt_sec,fRD,fDM,eta,chi,amp_mult,NF_low,NF):
     return Amps
 
 @njit()
-def AmpPhaseSeriesInsAnsatz(Phi,dPhi,ddPhi,Amps,fs,Mt_sec,eta,chis,chia,chi,phi_ref,TTRef,amp_mult,NF_low,NF):
+def AmpPhaseSeriesInsAnsatz(Phi,dPhi,ddPhi,Amps,fs,Mt_sec,eta,chis,chia,chi,phi_ref,TTRef,amp_mult,NF_low,NF,lambda25=0,lambda3=0):
     """Ansatz for the inspiral phase. and amplitude
     We call the LAL TF2 coefficients here.
     The exact values of the coefficients used are given
     as comments in the top of this file
     Defined by Equation 27 and 28 arXiv:1508.07253"""
     #Assemble PN phasing series
-    prefactors_ini,prefactors_log = PhiInsPrefactorsMt(eta,Mt_sec,chis,chia,chi)
+    prefactors_ini,prefactors_log = PhiInsPrefactorsMt(eta,Mt_sec,chis,chia,chi, lambda25,lambda3)
     rhos = rho_funs(eta,chi)
     amp_prefactors = AmpInsPrefactorsMt(Mt_sec,eta,chis,chia,rhos)
     amp0 = amp_mult/Mt_sec**(7/6)
@@ -211,14 +211,14 @@ def AmpPhaseSeriesInsAnsatz(Phi,dPhi,ddPhi,Amps,fs,Mt_sec,eta,chis,chia,chi,phi_
     return Phi,dPhi,ddPhi,Amps
 
 @njit()
-def PhiSeriesInsAnsatz(Phi,dPhi,ddPhi,fs,Mt_sec,eta,chis,chia,chi,phi_ref,TTRef,NF_low,NF):
+def PhiSeriesInsAnsatz(Phi,dPhi,ddPhi,fs,Mt_sec,eta,chis,chia,chi,phi_ref,TTRef,NF_low,NF,lambda25=0,lambda3=0):
     """Ansatz for the inspiral phase.
     We call the LAL TF2 coefficients here.
     The exact values of the coefficients used are given
     as comments in the top of this file
     Defined by Equation 27 and 28 arXiv:1508.07253"""
     #Assemble PN phasing series
-    prefactors_ini,prefactors_log = PhiInsPrefactorsMt(eta,Mt_sec,chis,chia,chi)
+    prefactors_ini,prefactors_log = PhiInsPrefactorsMt(eta,Mt_sec,chis,chia,chi,lambda25,lambda3)
     dm = 1/(2*np.pi)
     for itrf in prange(NF_low,NF):
         floc = fs[itrf]
@@ -522,7 +522,7 @@ def IMRPhenDAmpPhaseFI_get_TTRef(Mt_sec,eta,chis,chia,MfRef_in,imr_default_t=Fal
     return TTRef
 
 @njit()
-def IMRPhenDAmpPhaseFI(Phis,times,timeps,Amps,fs,Mt_sec,eta,chis,chia,NF,MfRef_in,phi0,amp_mult,imr_default_t=False,t_offset=0.):
+def IMRPhenDAmpPhaseFI(Phis,times,timeps,Amps,fs,Mt_sec,eta,chis,chia,NF,MfRef_in,phi0,amp_mult,imr_default_t=False,t_offset=0.,lambda25=0,lambda3=0):
     """get both amplitude and phase in place at the same time given input FI at MfRef_in if imr_default_t is true, use the phasing convention from IMRPhenomD,
     otherwise try to set MfRef_in=Mf at t=0"""
 
@@ -571,11 +571,11 @@ def IMRPhenDAmpPhaseFI(Phis,times,timeps,Amps,fs,Mt_sec,eta,chis,chia,NF,MfRef_i
     #TODO check factors of pi/4 in phifref
     phifRef = phifRef + dPhifRef*MfRef + t_offset/dm*MfRef + 2*phi0
 
-    Phis,times,timeps,Amps,itrFCut = IMRPhenDAmpPhase_tc(Phis,times,timeps,Amps,fs,Mt_sec,eta,chis,chia,NF,TTRef,phifRef,amp_mult)
+    Phis,times,timeps,Amps,itrFCut = IMRPhenDAmpPhase_tc(Phis,times,timeps,Amps,fs,Mt_sec,eta,chis,chia,NF,TTRef,phifRef,amp_mult,lambda25,lambda3)
     return Phis,times,timeps,Amps,TTRef,MfRef,itrFCut
 
 @njit()
-def IMRPhenDAmpPhase_tc(Phis,times,timeps,Amps,fs,Mt_sec,eta,chis,chia,NF,TTRef,phifRef,amp_mult):
+def IMRPhenDAmpPhase_tc(Phis,times,timeps,Amps,fs,Mt_sec,eta,chis,chia,NF,TTRef,phifRef,amp_mult,lambda25=0,lambda3=0):
     """get both amplitude and phase in place at the same time given input TTRef"""
     #TODO reabsorb this now redundant function
     chi = chiPN(eta,chis,chia)
@@ -641,7 +641,7 @@ def IMRPhenDAmpPhase_tc(Phis,times,timeps,Amps,fs,Mt_sec,eta,chis,chia,NF,TTRef,
     #In practice the combined method is so much faster that it justifies the wasted computation
     #and it would unnecessarily increase code complexity to avoid it.
     if itrfIntMax>0:
-        Phis,times,timeps,Amps = AmpPhaseSeriesInsAnsatz(Phis,times,timeps,Amps,fs,Mt_sec,eta,chis,chia,chi,phifRefIns,TTRefIns,amp0,0,itrfIntMax) #Ins range
+        Phis,times,timeps,Amps = AmpPhaseSeriesInsAnsatz(Phis,times,timeps,Amps,fs,Mt_sec,eta,chis,chia,chi,phifRefIns,TTRefIns,amp0,0,itrfIntMax, lambda25,lambda3) #Ins range
 
     #   split the calculation to just 1 of 3 possible mutually exclusive ranges
     if itrfIntAmp<itrfMRDAmp:
