@@ -15,6 +15,7 @@ jax.config.update("jax_enable_x64", True)
 
 
 # load theoretical sensitivity curve from aLIGO
+### (May need to update this; cf. Aiden's email)
 aLIGO_sensitivity = np.loadtxt('aLIGODesign.txt')
 # interpolate over our frequency bins
 sqrtS = jnp.array(interp1d(aLIGO_sensitivity[:, 0], aLIGO_sensitivity[:, 1])(wg.f))
@@ -55,20 +56,25 @@ fast_lnprior = jax.jit(ln_prior)
 
 
 # likelihood
-def ln_likelihood(x, temperature=1.0):
-    x_h22 = wg.get_h22(x)
+# NB: The local scope of lambda25 and lambda3 conflicts with the global scope of these 
+# variables (carried through the data_amp/phase_suppressed objects) in data.py.
+def ln_likelihood(x, temperature=1.0, lambda25=0, lambda3=0):
+    x_h22 = wg.get_h22(x, lambda25, lambda3)
     x_amp, x_phase = x_h22.amp, x_h22.phase
-    integrand = (x_amp**2 + d.data_amp**2 - 2 * x_amp * d.data_amp * np.cos(x_phase - d.data_phase)) / S
+    if lambda25 == 0 and lambda3 == 0:
+        integrand = (x_amp**2 + d.data_amp**2 - 2 * x_amp * d.data_amp * np.cos(x_phase - d.data_phase)) / S
+    else:
+        integrand = (x_amp**2 + d.data_amp_suppressed**2 - 2 * x_amp * d.data_amp_suppressed * np.cos(x_phase - d.data_phase_suppressed)) / S
     lnlike = -2. * np.sum(integrand) * wg.df
     return lnlike / temperature
 
 
 # posterior
-def ln_posterior(x, temperature=1.0):
+def ln_posterior(x, temperature=1.0, lambda25=0, lambda3=0):
     if np.any(x < wg.x_mins) or np.any(x > wg.x_maxs):
         return -np.inf
     else:
-        return ln_likelihood(x, temperature)
+        return ln_likelihood(x, temperature, lambda25, lambda3)
 
 
 
