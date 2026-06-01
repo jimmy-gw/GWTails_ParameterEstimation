@@ -666,14 +666,14 @@ def PhiInsPrefactors(eta,chis,chia,chi,lambda25=0,lambda3=0):
     return prefactors_ini,prefactors_log
 
 @njit()
-def PhiInsAnsatzInt(Mfs,eta,chis,chia,chi):
+def PhiInsAnsatzInt(Mfs,eta,chis,chia,chi, lambda25=0,lambda3=0):
     """Ansatz for the inspiral phase.
     We call the LAL TF2 coefficients here.
     The exact values of the coefficients used are given
     as comments in the top of this file
     Defined by Equation 27 and 28 arXiv:1508.07253"""
     #Assemble PN phasing series
-    prefactors_ini,prefactors_log = PhiInsPrefactors(eta,chis,chia,chi)
+    prefactors_ini,prefactors_log = PhiInsPrefactors(eta,chis,chia,chi, lambda25,lambda3)
 
     fv = Mfs**(1/3)
     logv = 1/3*np.log(np.pi)+np.log(fv)
@@ -693,12 +693,12 @@ def PhiInsAnsatzInt(Mfs,eta,chis,chia,chi):
 
 
 @njit()
-def DPhiInsAnsatzInt(Mfs,eta,chis,chia,chi):
+def DPhiInsAnsatzInt(Mfs,eta,chis,chia,chi, lambda25=0,lambda3=0):
     """First frequency derivative of PhiInsAnsatzInt"""
     #Assemble PN phasing series
     fv = Mfs**(1/3)
     logfv = 1/3*np.log(np.pi)+np.log(fv)
-    prefactors_ini,prefactors_log = PhiInsPrefactors(eta,chis,chia,chi)
+    prefactors_ini,prefactors_log = PhiInsPrefactors(eta,chis,chia,chi, lambda25, lambda3)
     dPhi = 1/fv**8*(0 \
         - 5/3*prefactors_ini[0] \
         - 3/3*prefactors_ini[1]*fv**2 \
@@ -716,12 +716,12 @@ def DPhiInsAnsatzInt(Mfs,eta,chis,chia,chi):
     return dPhi
 
 @njit()
-def DDPhiInsAnsatzInt(Mfs,eta,chis,chia,chi):
-    """First frequency derivative of PhiInsAnsatzInt"""
+def DDPhiInsAnsatzInt(Mfs,eta,chis,chia,chi, lambda25=0,lambda3=0):
+    """Second frequency derivative of PhiInsAnsatzInt"""
     #Assemble PN phasing series
     fv = Mfs**(1/3)
     logfv = 1/3*np.log(np.pi)+np.log(fv)
-    prefactors_ini,prefactors_log = PhiInsPrefactors(eta,chis,chia,chi)
+    prefactors_ini,prefactors_log = PhiInsPrefactors(eta,chis,chia,chi, lambda25, lambda3)
     ddPhi = 1/fv**11*(0 \
         + 40/9*prefactors_ini[0] \
         + 18/9*prefactors_ini[1]*fv**2 \
@@ -744,7 +744,7 @@ def NextPow2(n):
     return np.int64(2**np.ceil(np.log2(n)))
 
 @njit()
-def ComputeIMRPhenDPhaseConnectionCoefficients(fRD,fDM,eta,chis,chia,chi,fMRDJoinPhi):
+def ComputeIMRPhenDPhaseConnectionCoefficients(fRD,fDM,eta,chis,chia,chi,fMRDJoinPhi, lambda25=0,lambda3=0):
     """This function aligns the three phase parts (inspiral, intermediate and merger-rindown)
     such that they are c^1 continuous at the transition frequencies
     Defined in VIII. Full IMR Waveforms arXiv:1508.07253"""
@@ -754,11 +754,11 @@ def ComputeIMRPhenDPhaseConnectionCoefficients(fRD,fDM,eta,chis,chia,chi,fMRDJoi
 #   Joining at fInsJoin
 #   PhiIns (fInsJoin)  =   PhiInt (fInsJoin) + C1Int + C2Int fInsJoin
 #   PhiIns'(fInsJoin)  =   PhiInt'(fInsJoin) + C2Int
-    DPhiIns = DPhiInsAnsatzInt(imrc.PHI_fJoin_INS,eta,chis,chia,chi)
+    DPhiIns = DPhiInsAnsatzInt(imrc.PHI_fJoin_INS,eta,chis,chia,chi, lambda25,lambda3)
     DPhiInt = DPhiIntAnsatz(imrc.PHI_fJoin_INS,eta,chi)
     C2Int = DPhiIns - DPhiInt
 
-    phiC1_ref = PhiInsAnsatzInt(imrc.PHI_fJoin_INS,eta,chis,chia,chi)
+    phiC1_ref = PhiInsAnsatzInt(imrc.PHI_fJoin_INS,eta,chis,chia,chi, lambda25,lambda3)
     C1Int = phiC1_ref-PhiIntAnsatz(imrc.PHI_fJoin_INS,eta,chi) - C2Int*imrc.PHI_fJoin_INS
 
 #   Compute C1MRD and C2MRD coeffs
@@ -777,7 +777,7 @@ def ComputeIMRPhenDPhaseConnectionCoefficients(fRD,fDM,eta,chis,chia,chi,fMRDJoi
     return C1Int,C2Int,C1MRD,C2MRD
 
 #@njit()
-def IMRPhenDPhase(Mfs,Mt_sec,eta,chis,chia,NF,fRef_in,phi0):
+def IMRPhenDPhase(Mfs,Mt_sec,eta,chis,chia,NF,fRef_in,phi0, lambda25=0,lambda3=0):
     """This function computes the IMR phase given phenom coefficients.
     Defined in VIII. Full IMR Waveforms arXiv:1508.07253
     The inspiral, intermediate and merger-ringdown phase parts
@@ -795,7 +795,7 @@ def IMRPhenDPhase(Mfs,Mt_sec,eta,chis,chia,NF,fRef_in,phi0):
     fMRDJoinAmp = fmaxCalc(fRD,fDM,eta,chi)
 
     # Compute coefficients to make phase C^1 continuous (phase and first derivative)
-    C1Int,C2Int,C1MRD,C2MRD = ComputeIMRPhenDPhaseConnectionCoefficients(fRD,fDM,eta,chis,chia,chi,fMRDJoinPhi)
+    C1Int,C2Int,C1MRD,C2MRD = ComputeIMRPhenDPhaseConnectionCoefficients(fRD,fDM,eta,chis,chia,chi,fMRDJoinPhi, lambda25,lambda3)
 
     #time shift so that peak amplitude is approximately at t=0
     #For details see https:#www.lsc-group.phys.uwm.edu/ligovirgo/cbcnote/WaveformsReview/IMRPhenomDCodeReview/timPD_EDOMain
@@ -814,7 +814,7 @@ def IMRPhenDPhase(Mfs,Mt_sec,eta,chis,chia,NF,fRef_in,phi0):
     else:
         MfRef = fRef_in
     if MfRef<imrc.PHI_fJoin_INS:
-        phifRef = PhiInsAnsatzInt(MfRef,eta,chis,chia,chi)
+        phifRef = PhiInsAnsatzInt(MfRef,eta,chis,chia,chi, lambda25,lambda3) # (+2*phi0+TTRef*MfRef) ?
     elif MfRef<fMRDJoinPhi:
         phifRef = PhiIntAnsatz(MfRef,eta,chi)+C1Int+C2Int*MfRef
     else:
@@ -839,14 +839,14 @@ def IMRPhenDPhase(Mfs,Mt_sec,eta,chis,chia,NF,fRef_in,phi0):
         itrfMRDPhi = np.searchsorted(Mfs,fMRDJoinPhi)
         itrfInt = np.searchsorted(Mfs,imrc.PHI_fJoin_INS)
 
-    Phis[0:itrfInt] = PhiInsAnsatzInt(Mfs[0:itrfInt],eta,chis,chia,chi)-phifRefIns+TTRefIns*Mfs[0:itrfInt] #Ins range
+    Phis[0:itrfInt] = PhiInsAnsatzInt(Mfs[0:itrfInt],eta,chis,chia,chi, lambda25,lambda3)-phifRefIns+TTRefIns*Mfs[0:itrfInt] #Ins range
     Phis[itrfInt:itrfMRDPhi] = PhiIntAnsatz(Mfs[itrfInt:itrfMRDPhi],eta,chi)-phifRefInt+TTRefInt*Mfs[itrfInt:itrfMRDPhi] #intermediate range
     Phis[itrfMRDPhi:itrFCut] = PhiMRDAnsatzInt(Mfs[itrfMRDPhi:itrFCut],fRD,fDM,eta,chi)-phifRefMRD+TTRefMRD*Mfs[itrfMRDPhi:itrFCut]#MRD range
     #Phis[:itrFCut] -= t0*Mfs[:itrFCut]
 
     times = np.zeros(NF)
     if imrc.findT:
-        times[0:itrfInt] = DPhiInsAnsatzInt(Mfs[0:itrfInt],eta,chis,chia,chi)+TTRefIns #Ins range
+        times[0:itrfInt] = DPhiInsAnsatzInt(Mfs[0:itrfInt],eta,chis,chia,chi, lambda25,lambda3)+TTRefIns #Ins range
         times[itrfInt:itrfMRDPhi] = DPhiIntAnsatz(Mfs[itrfInt:itrfMRDPhi],eta,chi)+TTRefInt #intermediate range
         times[itrfMRDPhi:itrFCut] = DPhiMRD(Mfs[itrfMRDPhi:itrFCut],fRD,fDM,eta,chi)+TTRefMRD#MRD range
 

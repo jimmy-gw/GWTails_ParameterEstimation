@@ -57,7 +57,7 @@ import IMRPhenomD.IMRPhenomD_const as imrc
  # under https:#www.lsc-group.phys.uwm.edu/ligovirgo/cbcnote/WaveformsReview/IMRPhenomDCodeReview
  #/
 
-def IMRPhenomDGenerateFD(phi0,fRef_in,deltaF,m1_SI,m2_SI,chi1,chi2,f_min,f_max,distance):
+def IMRPhenomDGenerateFD(phi0,fRef_in,deltaF,m1_SI,m2_SI,chi1,chi2,f_min,f_max,distance, lambda25=0, lambda3=0):
     """Driver routine to compute the spin-aligned, inspiral-merger-ringdown
     phenomenological waveform IMRPhenomD in the frequency domain.
 
@@ -115,7 +115,7 @@ def IMRPhenomDGenerateFD(phi0,fRef_in,deltaF,m1_SI,m2_SI,chi1,chi2,f_min,f_max,d
     if f_max_prime>fCut:
         f_max_prime = fCut
 
-    htilde = IMRPhenomDGenerateFD_internal(phi0, fRef_in, deltaF,m1, m2, chi1, chi2,f_min, f_max_prime, distance)
+    htilde = IMRPhenomDGenerateFD_internal(phi0, fRef_in, deltaF,m1, m2, chi1, chi2,f_min, f_max_prime, distance, lambda25,lambda3)
 
     if f_max_prime < f_max:
         # The user has requested a higher f_max than Mf=fCut.
@@ -182,7 +182,7 @@ def IMRPhenomDGenerateh22FDAmpPhase(h22,freq,phi0,fRef_in,m1_SI,m2_SI,chi1,chi2,
     h22 = IMRPhenomDGenerateh22FDAmpPhase_internal(h22,freq, phi0, fRef_in, m1, m2, chi1, chi2, distance, lambda25, lambda3)
     return h22
 
-def IMRPhenomDGenerateFD_internal(phi0,fRef_in,deltaF,m1_in,m2_in,chi1_in,chi2_in,f_min,f_max,distance):
+def IMRPhenomDGenerateFD_internal(phi0,fRef_in,deltaF,m1_in,m2_in,chi1_in,chi2_in,f_min,f_max,distance, lambda25=0, lambda3=0):
     """The following private function generates IMRPhenomD frequency-domain waveforms
     given coefficients"""
     # LIGOTimeGPS ligotimegps_zero = LIGOTIMEGPSZERO; # = {0, 0}
@@ -234,7 +234,7 @@ def IMRPhenomDGenerateFD_internal(phi0,fRef_in,deltaF,m1_in,m2_in,chi1_in,chi2_i
 
     # Now generate the waveform
     Mfs = Mt_sec*deltaF*np.arange(ind_min,ind_max) # geometric frequency
-    phis,times,t0,MfRef,itrFCut = IMRPhenDPhase(Mfs[ind_min:ind_max],Mt_sec,eta,chis,chia,ind_max-ind_min,fRef_in,phi0)
+    phis,times,t0,MfRef,itrFCut = IMRPhenDPhase(Mfs[ind_min:ind_max],Mt_sec,eta,chis,chia,ind_max-ind_min,fRef_in,phi0, lambda25,lambda3)
     amps = IMRPhenDAmplitude(Mfs[ind_min:ind_max],eta,chis,chia,ind_max-ind_min,amp_mult=amp0)
     htilde.data[:ind_max-ind_min] =  amps[:ind_max-ind_min]*np.exp(-1j*phis[:ind_max-ind_min])
 
@@ -291,7 +291,7 @@ def IMRPhenomDGenerateh22FDAmpPhase_internal(h22,freq,phi0,fRef_in,m1_in,m2_in,c
     #Mfs = Mt_sec*f #geometric frequency
 
     # for frequencies exceeding the maximal frequency covered by PhenomD, put 0 amplitude and phase
-    #phase,time,t0,MfRef,itrFCut = IMRPhenDPhase(Mfs,Mt,eta,chis,chia,nf,fRef_in,phi0)
+    #phase,time,t0,MfRef,itrFCut = IMRPhenDPhase(Mfs,Mt,eta,chis,chia,nf,fRef_in,phi0, lambda25,lambda3)
     #amp = IMRPhenDAmplitude(Mfs,eta,chis,chia,nf,amp_mult=amp0)
     h22.phase,h22.time,h22.timep,h22.amp,h22.t0,MfRef,itrFCut = IMRPhenDAmpPhaseFI(h22.phase,h22.time,h22.timep,h22.amp,freq,Mt_sec,eta,chis,chia,nf,fRef_in,phi0,amp0,True,lambda25,lambda3)
     h22.fRef = MfRef/Mt_sec
