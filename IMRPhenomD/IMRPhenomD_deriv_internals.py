@@ -12,9 +12,9 @@ from IMRPhenomD.IMRPhenomD_internals import amp0Func,ComputeDeltasFromCollocatio
 #from IMRPhenomD_internals import AmpIn
 
 @njit()
-def PhiInsPrefactorsMt(eta,Mt_sec,chis,chia,chi, lambda25=0,lambda3=0):
+def PhiInsPrefactorsMt(eta,Mt_sec,chis,chia,chi, lambda15=0,lambda25=0,lambda3=0,lambda35=0):
     """Helper function to get the prefactors for PhiIns"""
-    v,vlogv = PNPhasingSeriesTaylorF2(eta,chis,chia,lambda25,lambda3)
+    v,vlogv = PNPhasingSeriesTaylorF2(eta,chis,chia,lambda15,lambda25,lambda3,lambda35)
     #  # PN phasing series
     minus_five_thirds = v[0]/Mt_sec**(5/3)/np.pi**(5/3)
     minus_one = v[2]/Mt_sec**(3/3)/np.pi
@@ -131,14 +131,14 @@ def AmpMRDAnsatzInplace(Amps,fs,Mt_sec,fRD,fDM,eta,chi,amp_mult,NF_low,NF):
     return Amps
 
 @njit()
-def AmpPhaseSeriesInsAnsatz(Phi,dPhi,ddPhi,Amps,fs,Mt_sec,eta,chis,chia,chi,phi_ref,TTRef,amp_mult,NF_low,NF,lambda25=0,lambda3=0):
+def AmpPhaseSeriesInsAnsatz(Phi,dPhi,ddPhi,Amps,fs,Mt_sec,eta,chis,chia,chi,phi_ref,TTRef,amp_mult,NF_low,NF,lambda15=0,lambda25=0,lambda3=0,lambda35=0):
     """Ansatz for the inspiral phase. and amplitude
     We call the LAL TF2 coefficients here.
     The exact values of the coefficients used are given
     as comments in the top of this file
     Defined by Equation 27 and 28 arXiv:1508.07253"""
     #Assemble PN phasing series
-    prefactors_ini,prefactors_log = PhiInsPrefactorsMt(eta,Mt_sec,chis,chia,chi, lambda25,lambda3)
+    prefactors_ini,prefactors_log = PhiInsPrefactorsMt(eta,Mt_sec,chis,chia,chi, lambda15,lambda25,lambda3,lambda35)
     rhos = rho_funs(eta,chi)
     amp_prefactors = AmpInsPrefactorsMt(Mt_sec,eta,chis,chia,rhos)
     amp0 = amp_mult/Mt_sec**(7/6)
@@ -211,14 +211,14 @@ def AmpPhaseSeriesInsAnsatz(Phi,dPhi,ddPhi,Amps,fs,Mt_sec,eta,chis,chia,chi,phi_
     return Phi,dPhi,ddPhi,Amps
 
 @njit()
-def PhiSeriesInsAnsatz(Phi,dPhi,ddPhi,fs,Mt_sec,eta,chis,chia,chi,phi_ref,TTRef,NF_low,NF,lambda25=0,lambda3=0):
+def PhiSeriesInsAnsatz(Phi,dPhi,ddPhi,fs,Mt_sec,eta,chis,chia,chi,phi_ref,TTRef,NF_low,NF,lambda15=0,lambda25=0,lambda3=0,lambda35=0):
     """Ansatz for the inspiral phase.
     We call the LAL TF2 coefficients here.
     The exact values of the coefficients used are given
     as comments in the top of this file
     Defined by Equation 27 and 28 arXiv:1508.07253"""
     #Assemble PN phasing series
-    prefactors_ini,prefactors_log = PhiInsPrefactorsMt(eta,Mt_sec,chis,chia,chi,lambda25,lambda3)
+    prefactors_ini,prefactors_log = PhiInsPrefactorsMt(eta,Mt_sec,chis,chia,chi,lambda15,lambda25,lambda3,lambda35)
     dm = 1/(2*np.pi)
     for itrf in prange(NF_low,NF):
         floc = fs[itrf]
@@ -354,7 +354,7 @@ def PhiSeriesMRDAnsatz(Phi,dPhi,ddPhi,fs,Mt_sec,MfRD,MfDM,eta,chi,phi_ref,TTRef,
 
 ################/ Phase: glueing function ################
 @njit()
-def IMRPhenDPhaseFI(Phis,times,timeps,fs,Mt_sec,eta,chis,chia,NF,MfRef_in,phi0, lambda25=0,lambda3=0):
+def IMRPhenDPhaseFI(Phis,times,timeps,fs,Mt_sec,eta,chis,chia,NF,MfRef_in,phi0, lambda15=0,lambda25=0,lambda3=0,lambda35=0):
     """This function computes the IMR phase given phenom coefficients.
     Defined in VIII. Full IMR Waveforms arXiv:1508.07253
     The inspiral, intermediate and merger-ringdown phase parts
@@ -371,7 +371,7 @@ def IMRPhenDPhaseFI(Phis,times,timeps,fs,Mt_sec,eta,chis,chia,NF,MfRef_in,phi0, 
     MfMRDJoinAmp = fmaxCalc(fRD,fDM,eta,chi)
 
     # Compute coefficients to make phase C^1 continuous (phase and first derivative)
-    C1Int,C2Int,C1MRD,C2MRD = ComputeIMRPhenDPhaseConnectionCoefficients(fRD,fDM,eta,chis,chia,chi,MfMRDJoinPhi, lambda25,lambda3)
+    C1Int,C2Int,C1MRD,C2MRD = ComputeIMRPhenDPhaseConnectionCoefficients(fRD,fDM,eta,chis,chia,chi,MfMRDJoinPhi, lambda15,lambda25,lambda3,lambda35)
 
     #time shift so that peak amplitude is approximately at t=0
     #For details see https:#www.lsc-group.phys.uwm.edu/ligovirgo/cbcnote/WaveformsReview/IMRPhenomDCodeReview/timPD_EDOMain
@@ -391,8 +391,8 @@ def IMRPhenDPhaseFI(Phis,times,timeps,fs,Mt_sec,eta,chis,chia,NF,MfRef_in,phi0, 
         MfRef = MfRef_in
 
     if MfRef<imrc.PHI_fJoin_INS:
-        TTRef =  -DPhiInsAnsatzInt(MfRef,eta,chis,chia,chi, lambda25,lambda3)
-        phifRef = PhiInsAnsatzInt(MfRef,eta,chis,chia,chi, lambda25,lambda3) # (+phi0) ?
+        TTRef =  -DPhiInsAnsatzInt(MfRef,eta,chis,chia,chi, lambda15,lambda25,lambda3,lambda35)
+        phifRef = PhiInsAnsatzInt(MfRef,eta,chis,chia,chi, lambda15,lambda25,lambda3,lambda35) # (+phi0) ?
     elif MfRef<MfMRDJoinPhi:
         TTRef =  -DPhiIntAnsatz(MfRef,eta,chi)-C2Int
         phifRef = PhiIntAnsatz(MfRef,eta,chi)+C1Int+C2Int*MfRef
@@ -426,7 +426,7 @@ def IMRPhenDPhaseFI(Phis,times,timeps,fs,Mt_sec,eta,chis,chia,NF,MfRef_in,phi0, 
     phifRefMRD = phifRef-C1MRD
 
     if itrfIntPhi>0:
-        Phis,times,timeps = PhiSeriesInsAnsatz(Phis,times,timeps,fs,Mt_sec,eta,chis,chia,chi,phifRefIns,TTRefIns,0,itrfIntPhi, lambda25,lambda3) #Ins range
+        Phis,times,timeps = PhiSeriesInsAnsatz(Phis,times,timeps,fs,Mt_sec,eta,chis,chia,chi,phifRefIns,TTRefIns,0,itrfIntPhi, lambda15,lambda25,lambda3,lambda35) #Ins range
     if itrfIntPhi<itrfMRDPhi:
         Phis,times,timeps = PhiSeriesIntAnsatz(Phis,times,timeps,fs,Mt_sec,eta,chi,phifRefInt,TTRefInt,itrfIntPhi,itrfMRDPhi) #intermediate range
     if itrfMRDPhi<itrFCut:
@@ -481,7 +481,7 @@ def IMRPhenDAmplitudeFI(Amps,fs,Mt_sec,eta,chis,chia,NF,amp_mult=1.):
     return Amps
 
 @njit()
-def IMRPhenDAmpPhaseFI_get_TTRef(Mt_sec,eta,chis,chia,MfRef_in,imr_default_t=False,t_offset=0., lambda25=0,lambda3=0):
+def IMRPhenDAmpPhaseFI_get_TTRef(Mt_sec,eta,chis,chia,MfRef_in,imr_default_t=False,t_offset=0., lambda15=0,lambda25=0,lambda3=0,lambda35=0):
     """get only TTRef given input FI at MfRef_in if imr_default_t is true, use the phasing convention from IMRPhenomD,
     otherwise try to set MfRef_in=Mf at t=0"""
 
@@ -503,14 +503,14 @@ def IMRPhenDAmpPhaseFI_get_TTRef(Mt_sec,eta,chis,chia,MfRef_in,imr_default_t=Fal
         MfRef = MfRef_in
 
     # Compute coefficients to make phase C^1 continuous (phase and first derivative)
-    _,C2Int,_,C2MRD = ComputeIMRPhenDPhaseConnectionCoefficients(fRD,fDM,eta,chis,chia,chi,MfMRDJoinPhi, lambda25,lambda3)
+    _,C2Int,_,C2MRD = ComputeIMRPhenDPhaseConnectionCoefficients(fRD,fDM,eta,chis,chia,chi,MfMRDJoinPhi, lambda15,lambda25,lambda3,lambda35)
 
     if imr_default_t:
         dPhifRef = -DPhiMRD(MfMRDJoinAmp,fRD,fDM,eta,chi)
     else:
         #TODO safe to pic a default here?
         if MfRef<imrc.PHI_fJoin_INS:
-            dPhifRef =  -DPhiInsAnsatzInt(MfRef,eta,chis,chia,chi, lambda25,lambda3)
+            dPhifRef =  -DPhiInsAnsatzInt(MfRef,eta,chis,chia,chi, lambda15,lambda25,lambda3,lambda35)
         elif MfRef<MfMRDJoinPhi:
             dPhifRef =  -DPhiIntAnsatz(MfRef,eta,chi)-C2Int
         else:
@@ -522,7 +522,7 @@ def IMRPhenDAmpPhaseFI_get_TTRef(Mt_sec,eta,chis,chia,MfRef_in,imr_default_t=Fal
     return TTRef
 
 @njit()
-def IMRPhenDAmpPhaseFI(Phis,times,timeps,Amps,fs,Mt_sec,eta,chis,chia,NF,MfRef_in,phi0,amp_mult,imr_default_t=False,t_offset=0.,lambda25=0,lambda3=0):
+def IMRPhenDAmpPhaseFI(Phis,times,timeps,Amps,fs,Mt_sec,eta,chis,chia,NF,MfRef_in,phi0,amp_mult,imr_default_t=False,t_offset=0.,lambda15=0,lambda25=0,lambda3=0,lambda35=0):
     """get both amplitude and phase in place at the same time given input FI at MfRef_in if imr_default_t is true, use the phasing convention from IMRPhenomD,
     otherwise try to set MfRef_in=Mf at t=0"""
 
@@ -544,14 +544,14 @@ def IMRPhenDAmpPhaseFI(Phis,times,timeps,Amps,fs,Mt_sec,eta,chis,chia,NF,MfRef_i
         MfRef = MfRef_in
 
     # Compute coefficients to make phase C^1 continuous (phase and first derivative)
-    C1Int,C2Int,C1MRD,C2MRD = ComputeIMRPhenDPhaseConnectionCoefficients(fRD,fDM,eta,chis,chia,chi,MfMRDJoinPhi, lambda25,lambda3)
+    C1Int,C2Int,C1MRD,C2MRD = ComputeIMRPhenDPhaseConnectionCoefficients(fRD,fDM,eta,chis,chia,chi,MfMRDJoinPhi, lambda15,lambda25,lambda3,lambda35)
 
     if imr_default_t:
         dPhifRef = -DPhiMRD(MfMRDJoinAmp,fRD,fDM,eta,chi)
     else:
         #TODO safe to pic a default here?
         if MfRef<imrc.PHI_fJoin_INS:
-            dPhifRef =  -DPhiInsAnsatzInt(MfRef,eta,chis,chia,chi, lambda25,lambda3)
+            dPhifRef =  -DPhiInsAnsatzInt(MfRef,eta,chis,chia,chi, lambda15,lambda25,lambda3,lambda35)
         elif MfRef<MfMRDJoinPhi:
             dPhifRef =  -DPhiIntAnsatz(MfRef,eta,chi)-C2Int
         else:
@@ -561,7 +561,7 @@ def IMRPhenDAmpPhaseFI(Phis,times,timeps,Amps,fs,Mt_sec,eta,chis,chia,NF,MfRef_i
     TTRef = dPhifRef*dm+t_offset
 
     if MfRef<imrc.PHI_fJoin_INS:
-        phifRef = PhiInsAnsatzInt(MfRef,eta,chis,chia,chi, lambda25,lambda3) # (+phi0) ?
+        phifRef = PhiInsAnsatzInt(MfRef,eta,chis,chia,chi, lambda15,lambda25,lambda3,lambda35) # (+phi0) ?
     elif MfRef<MfMRDJoinPhi:
         phifRef = PhiIntAnsatz(MfRef,eta,chi)+C1Int+C2Int*MfRef
     else:
@@ -571,11 +571,11 @@ def IMRPhenDAmpPhaseFI(Phis,times,timeps,Amps,fs,Mt_sec,eta,chis,chia,NF,MfRef_i
     #TODO check factors of pi/4 in phifref
     phifRef = phifRef + dPhifRef*MfRef + t_offset/dm*MfRef + 2*phi0
 
-    Phis,times,timeps,Amps,itrFCut = IMRPhenDAmpPhase_tc(Phis,times,timeps,Amps,fs,Mt_sec,eta,chis,chia,NF,TTRef,phifRef,amp_mult,lambda25,lambda3)
+    Phis,times,timeps,Amps,itrFCut = IMRPhenDAmpPhase_tc(Phis,times,timeps,Amps,fs,Mt_sec,eta,chis,chia,NF,TTRef,phifRef,amp_mult,lambda15,lambda25,lambda3,lambda35)
     return Phis,times,timeps,Amps,TTRef,MfRef,itrFCut
 
 @njit()
-def IMRPhenDAmpPhase_tc(Phis,times,timeps,Amps,fs,Mt_sec,eta,chis,chia,NF,TTRef,phifRef,amp_mult,lambda25=0,lambda3=0):
+def IMRPhenDAmpPhase_tc(Phis,times,timeps,Amps,fs,Mt_sec,eta,chis,chia,NF,TTRef,phifRef,amp_mult,lambda15=0,lambda25=0,lambda3=0,lambda35=0):
     """get both amplitude and phase in place at the same time given input TTRef"""
     #TODO reabsorb this now redundant function
     chi = chiPN(eta,chis,chia)
@@ -623,7 +623,7 @@ def IMRPhenDAmpPhase_tc(Phis,times,timeps,Amps,fs,Mt_sec,eta,chis,chia,NF,TTRef,
     # NOTE: opposite Fourier convention with respect to PhenomD - to ensure 22 mode has power for positive f
 
     # Compute coefficients to make phase C^1 continuous (phase and first derivative)
-    C1Int,C2Int,C1MRD,C2MRD = ComputeIMRPhenDPhaseConnectionCoefficients(fRD,fDM,eta,chis,chia,chi,MfMRDJoinPhi, lambda25,lambda3)
+    C1Int,C2Int,C1MRD,C2MRD = ComputeIMRPhenDPhaseConnectionCoefficients(fRD,fDM,eta,chis,chia,chi,MfMRDJoinPhi, lambda15,lambda25,lambda3,lambda35)
 
     dm = Mt_sec/(2*np.pi)
 
@@ -641,7 +641,7 @@ def IMRPhenDAmpPhase_tc(Phis,times,timeps,Amps,fs,Mt_sec,eta,chis,chia,NF,TTRef,
     #In practice the combined method is so much faster that it justifies the wasted computation
     #and it would unnecessarily increase code complexity to avoid it.
     if itrfIntMax>0:
-        Phis,times,timeps,Amps = AmpPhaseSeriesInsAnsatz(Phis,times,timeps,Amps,fs,Mt_sec,eta,chis,chia,chi,phifRefIns,TTRefIns,amp0,0,itrfIntMax, lambda25,lambda3) #Ins range
+        Phis,times,timeps,Amps = AmpPhaseSeriesInsAnsatz(Phis,times,timeps,Amps,fs,Mt_sec,eta,chis,chia,chi,phifRefIns,TTRefIns,amp0,0,itrfIntMax, lambda15,lambda25,lambda3,lambda35) #Ins range
 
     #   split the calculation to just 1 of 3 possible mutually exclusive ranges
     if itrfIntAmp<itrfMRDAmp:

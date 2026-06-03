@@ -30,7 +30,7 @@ df = f[1] - f[0]
 
 # get waveform object (for l=2, m=2 mode)
 # input parameters as array in order described above
-def get_h22(x, lambda25=0,lambda3=0):
+def get_h22(x, lambda15=0, lambda25=0, lambda3=0, lambda35=0):
             
     # mass in solar masses
     # distance in ln(luminosity distance / meter)
@@ -54,24 +54,24 @@ def get_h22(x, lambda25=0,lambda3=0):
 
     #the first evaluation of the amplitudes and phase will always be much slower, because it must compile everything
     h22 = AmpPhaseFDWaveform(Nf, f, amp_imr, phase_imr, time_imr, timep_imr)
-    h22 = IMRPhenomDGenerateh22FDAmpPhase(h22, f, phic, MfRef_in, m1_SI, m2_SI, chi1, chi2, distance, lambda25, lambda3)
+    h22 = IMRPhenomDGenerateh22FDAmpPhase(h22, f, phic, MfRef_in, m1_SI, m2_SI, chi1, chi2, distance, lambda15, lambda25, lambda3, lambda35)
     
     return h22
 
 
 # get frequency-domain waveform
-def FD_waveform(x,lambda25=0,lambda3=0):
-    h22 = get_h22(x, lambda25, lambda3)
+def FD_waveform(x,lambda15=0,lambda25=0,lambda3=0,lambda35=0):
+    h22 = get_h22(x, lambda15, lambda25, lambda3, lambda35)
     return h22.amp * np.exp(-1.j * h22.phase)
 
 
 # compute partial derivative of frequency-domain waveform
 # (used for Fisher evaluation)
 epsilon = 1.e-6
-def partial_FD_waveform(x, deriv_ndx):
+def partial_FD_waveform(x, deriv_ndx, lambda15=0, lambda25=0, lambda3=0, lambda35=0):
     # central finite differencing
     delta_x = np.zeros(ndim)
     delta_x[deriv_ndx] = epsilon
-    return (FD_waveform(x + delta_x) - FD_waveform(x - delta_x)) / (2. * epsilon)
+    return (FD_waveform(x + delta_x, lambda15, lambda25, lambda3, lambda35) - FD_waveform(x - delta_x, lambda15, lambda25, lambda3, lambda35)) / (2. * epsilon)
 
 

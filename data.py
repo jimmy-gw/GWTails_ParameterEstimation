@@ -14,19 +14,19 @@ log_dist_inj = 58.07
 phic_inj = np.pi / 1.2
 x_inj = np.array([m1_inj, m2_inj, chi1_inj, chi2_inj, log_dist_inj, phic_inj])
 
-# * * * * * * * * 5/26/26: Need bayes factor for waveform models with and without log terms entirely * * * * * * * *
-lambda25 = 1
-lambda3 = 1
-# (Continuous variation of lambdas will be explored with future MCMC analysis)
-# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+lambda15 = 1
+lambda25 = 0
+lambda3 = 0
+lambda35 = 0
+# (Continuous variation of lambdas is explored with lambdasMCMC.py and TAILSvsNOTAILS.ipynb)
 
 # make data waveform objects
 data_h22 = wg.get_h22(x_inj)
-data_h22_suppressed = wg.get_h22(x_inj,lambda25,lambda3)
-
+data_h22_suppressed = wg.get_h22(x_inj,lambda15,lambda25,lambda3,lambda35)
+    
 # amplitude and phase of data in frequency-domain
 data_amp, data_phase = np.array(data_h22.amp), np.array(data_h22.phase)
 data_amp_suppressed, data_phase_suppressed = np.array(data_h22_suppressed.amp), np.array(data_h22_suppressed.phase)
 
 data_FD_waveform = wg.FD_waveform(x_inj)
-data_FD_waveform_suppressed = wg.FD_waveform(x_inj,lambda25,lambda3)
+data_FD_waveform_suppressed = wg.FD_waveform(x_inj,lambda15,lambda25,lambda3,lambda35)

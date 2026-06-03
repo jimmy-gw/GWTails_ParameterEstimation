@@ -57,7 +57,7 @@ class AmpPhaseFDWaveform:
 
 ########################################/
 @njit()
-def PNPhasingSeriesTaylorF2(eta,chis,chia,lambda25=0,lambda3=0):
+def PNPhasingSeriesTaylorF2(eta,chis,chia,lambda15=0,lambda25=0,lambda3=0,lambda35=0):
     """ From LALSimInspiralPNCoefficients.c
     The phasing function for TaylorF2 frequency-domain waveform.
     This function is tested in ../test/PNCoefficients.c for consistency
@@ -87,22 +87,23 @@ def PNPhasingSeriesTaylorF2(eta,chis,chia,lambda25=0,lambda3=0):
     v0 = 1.
     v1 = 0.
     v2 = 5/9*(743/84+11*eta)
-    v3 = -16*np.pi
     v4 = 5/72*(3058673/7056+5429/7*eta+617*eta**2)
     v5 = 5/9*np.pi*(7729/84-13*eta)
     
     
-    # # # # # Logarithmic terms at 2.5PN, 3PN order - see arXiv:0907.0700, Eq. 3.18 # # # # #
-    vlogv5 = 5/3*np.pi*(7729/84-13*eta) # Logarithmic term at 2.5PN order; PN corrections to 1st-order tail
-    vlogv6 = -6848/21 # Another logarithmic term at 3PN order; tail-of-tail
+    # # # # # Tail terms at 1.5PN, 2.5PN, 3PN, 3.5PN order - see arXiv:0907.0700, Eq. 3.18 # # # # #
+    v3 = -16*np.pi*(1-lambda15) # 1.5PN first-order tail term
+    vlogv5 = 5/3*np.pi*(7729/84-13*eta)*(1-lambda25) # Logarithmic term at 2.5PN order; PN corrections to 1st-order tail and Christodolou memory
+    vlogv6 = -6848/21*(1-lambda3) # Another logarithmic term at 3PN order; tail-of-tail
     
-    
+    # For my purposes this term need not be toggled, but I include it for completeness.
+    v7 = np.pi*(77096675/254016+378515/1512*eta-74045/756*eta**2)*(1-lambda35) # 3.5PN memory correction term MIXED WITH A LOT OF OTHER STUFF; see arXiv:0907.0700, Eq. 3.18.
+
     v6 = (11583231236531/4694215680-640/3*np.pi**2-6848/21*imrc.GAMMA) \
             +(-15737765635/3048192+2255/12*np.pi**2)*eta+76055/1728*eta**2-127825/1296*eta**3 \
             +-6848/21*np.log(4.)
     
-    v7 = np.pi*(77096675/254016+378515/1512*eta-74045/756*eta**2)
-
+    
 #     Compute 2.0PN SS, QM, and self-spin */
 #     See Eq. (6.24) in arXiv:0810.5336
 #     9b,c,d in arXiv:astro-ph/0504538
@@ -127,7 +128,7 @@ def PNPhasingSeriesTaylorF2(eta,chis,chia,lambda25=0,lambda3=0):
 
 #     At the very end, multiply everything in the series by pfaN */
     v = (pfaN*v0,pfaN*v1,pfaN*v2,pfaN*v3,pfaN*v4,pfaN*v5,pfaN*v6,pfaN*v7)
-    vlogv = (0.,0.,0.,0.,0.,(1-lambda25)*pfaN*vlogv5,(1-lambda3)*pfaN*vlogv6,0.)
+    vlogv = (0.,0.,0.,0.,0.,pfaN*vlogv5,pfaN*vlogv6,0.)
 
     return v,vlogv
 
@@ -639,8 +640,8 @@ def sigmaFits(eta,chi):
     return (sigma1,sigma2,sigma3,sigma4)
 
 @njit()
-def PhiInsPrefactors(eta,chis,chia,chi,lambda25=0,lambda3=0):
-    v,vlogv = PNPhasingSeriesTaylorF2(eta,chis,chia,lambda25,lambda3)
+def PhiInsPrefactors(eta,chis,chia,chi,lambda15=0,lambda25=0,lambda3=0,lambda35=0):
+    v,vlogv = PNPhasingSeriesTaylorF2(eta,chis,chia,lambda15,lambda25,lambda3,lambda35)
     #  # PN phasing series
     minus_five_thirds = v[0]/np.pi**(5/3)
     minus_one = v[2]/np.pi
@@ -666,14 +667,14 @@ def PhiInsPrefactors(eta,chis,chia,chi,lambda25=0,lambda3=0):
     return prefactors_ini,prefactors_log
 
 @njit()
-def PhiInsAnsatzInt(Mfs,eta,chis,chia,chi, lambda25=0,lambda3=0):
+def PhiInsAnsatzInt(Mfs,eta,chis,chia,chi, lambda15=0,lambda25=0,lambda3=0,lambda35=0):
     """Ansatz for the inspiral phase.
     We call the LAL TF2 coefficients here.
     The exact values of the coefficients used are given
     as comments in the top of this file
     Defined by Equation 27 and 28 arXiv:1508.07253"""
     #Assemble PN phasing series
-    prefactors_ini,prefactors_log = PhiInsPrefactors(eta,chis,chia,chi, lambda25,lambda3)
+    prefactors_ini,prefactors_log = PhiInsPrefactors(eta,chis,chia,chi, lambda15,lambda25,lambda3,lambda35)
 
     fv = Mfs**(1/3)
     logv = 1/3*np.log(np.pi)+np.log(fv)
@@ -693,12 +694,12 @@ def PhiInsAnsatzInt(Mfs,eta,chis,chia,chi, lambda25=0,lambda3=0):
 
 
 @njit()
-def DPhiInsAnsatzInt(Mfs,eta,chis,chia,chi, lambda25=0,lambda3=0):
+def DPhiInsAnsatzInt(Mfs,eta,chis,chia,chi, lambda15=0,lambda25=0,lambda3=0,lambda35=0):
     """First frequency derivative of PhiInsAnsatzInt"""
     #Assemble PN phasing series
     fv = Mfs**(1/3)
     logfv = 1/3*np.log(np.pi)+np.log(fv)
-    prefactors_ini,prefactors_log = PhiInsPrefactors(eta,chis,chia,chi, lambda25, lambda3)
+    prefactors_ini,prefactors_log = PhiInsPrefactors(eta,chis,chia,chi, lambda15,lambda25,lambda3,lambda35)
     dPhi = 1/fv**8*(0 \
         - 5/3*prefactors_ini[0] \
         - 3/3*prefactors_ini[1]*fv**2 \
@@ -716,12 +717,12 @@ def DPhiInsAnsatzInt(Mfs,eta,chis,chia,chi, lambda25=0,lambda3=0):
     return dPhi
 
 @njit()
-def DDPhiInsAnsatzInt(Mfs,eta,chis,chia,chi, lambda25=0,lambda3=0):
+def DDPhiInsAnsatzInt(Mfs,eta,chis,chia,chi, lambda15=0,lambda25=0,lambda3=0,lambda35=0):
     """Second frequency derivative of PhiInsAnsatzInt"""
     #Assemble PN phasing series
     fv = Mfs**(1/3)
     logfv = 1/3*np.log(np.pi)+np.log(fv)
-    prefactors_ini,prefactors_log = PhiInsPrefactors(eta,chis,chia,chi, lambda25, lambda3)
+    prefactors_ini,prefactors_log = PhiInsPrefactors(eta,chis,chia,chi, lambda15,lambda25,lambda3,lambda35)
     ddPhi = 1/fv**11*(0 \
         + 40/9*prefactors_ini[0] \
         + 18/9*prefactors_ini[1]*fv**2 \
@@ -744,7 +745,7 @@ def NextPow2(n):
     return np.int64(2**np.ceil(np.log2(n)))
 
 @njit()
-def ComputeIMRPhenDPhaseConnectionCoefficients(fRD,fDM,eta,chis,chia,chi,fMRDJoinPhi, lambda25=0,lambda3=0):
+def ComputeIMRPhenDPhaseConnectionCoefficients(fRD,fDM,eta,chis,chia,chi,fMRDJoinPhi, lambda15=0,lambda25=0,lambda3=0,lambda35=0):
     """This function aligns the three phase parts (inspiral, intermediate and merger-rindown)
     such that they are c^1 continuous at the transition frequencies
     Defined in VIII. Full IMR Waveforms arXiv:1508.07253"""
@@ -754,11 +755,11 @@ def ComputeIMRPhenDPhaseConnectionCoefficients(fRD,fDM,eta,chis,chia,chi,fMRDJoi
 #   Joining at fInsJoin
 #   PhiIns (fInsJoin)  =   PhiInt (fInsJoin) + C1Int + C2Int fInsJoin
 #   PhiIns'(fInsJoin)  =   PhiInt'(fInsJoin) + C2Int
-    DPhiIns = DPhiInsAnsatzInt(imrc.PHI_fJoin_INS,eta,chis,chia,chi, lambda25,lambda3)
+    DPhiIns = DPhiInsAnsatzInt(imrc.PHI_fJoin_INS,eta,chis,chia,chi, lambda15,lambda25,lambda3,lambda35)
     DPhiInt = DPhiIntAnsatz(imrc.PHI_fJoin_INS,eta,chi)
     C2Int = DPhiIns - DPhiInt
 
-    phiC1_ref = PhiInsAnsatzInt(imrc.PHI_fJoin_INS,eta,chis,chia,chi, lambda25,lambda3)
+    phiC1_ref = PhiInsAnsatzInt(imrc.PHI_fJoin_INS,eta,chis,chia,chi, lambda15,lambda25,lambda3,lambda35)
     C1Int = phiC1_ref-PhiIntAnsatz(imrc.PHI_fJoin_INS,eta,chi) - C2Int*imrc.PHI_fJoin_INS
 
 #   Compute C1MRD and C2MRD coeffs
@@ -777,7 +778,7 @@ def ComputeIMRPhenDPhaseConnectionCoefficients(fRD,fDM,eta,chis,chia,chi,fMRDJoi
     return C1Int,C2Int,C1MRD,C2MRD
 
 #@njit()
-def IMRPhenDPhase(Mfs,Mt_sec,eta,chis,chia,NF,fRef_in,phi0, lambda25=0,lambda3=0):
+def IMRPhenDPhase(Mfs,Mt_sec,eta,chis,chia,NF,fRef_in,phi0, lambda15=0,lambda25=0,lambda3=0,lambda35=0):
     """This function computes the IMR phase given phenom coefficients.
     Defined in VIII. Full IMR Waveforms arXiv:1508.07253
     The inspiral, intermediate and merger-ringdown phase parts
@@ -795,7 +796,7 @@ def IMRPhenDPhase(Mfs,Mt_sec,eta,chis,chia,NF,fRef_in,phi0, lambda25=0,lambda3=0
     fMRDJoinAmp = fmaxCalc(fRD,fDM,eta,chi)
 
     # Compute coefficients to make phase C^1 continuous (phase and first derivative)
-    C1Int,C2Int,C1MRD,C2MRD = ComputeIMRPhenDPhaseConnectionCoefficients(fRD,fDM,eta,chis,chia,chi,fMRDJoinPhi, lambda25,lambda3)
+    C1Int,C2Int,C1MRD,C2MRD = ComputeIMRPhenDPhaseConnectionCoefficients(fRD,fDM,eta,chis,chia,chi,fMRDJoinPhi, lambda15,lambda25,lambda3,lambda35)
 
     #time shift so that peak amplitude is approximately at t=0
     #For details see https:#www.lsc-group.phys.uwm.edu/ligovirgo/cbcnote/WaveformsReview/IMRPhenomDCodeReview/timPD_EDOMain
@@ -814,7 +815,7 @@ def IMRPhenDPhase(Mfs,Mt_sec,eta,chis,chia,NF,fRef_in,phi0, lambda25=0,lambda3=0
     else:
         MfRef = fRef_in
     if MfRef<imrc.PHI_fJoin_INS:
-        phifRef = PhiInsAnsatzInt(MfRef,eta,chis,chia,chi, lambda25,lambda3) # (+2*phi0+TTRef*MfRef) ?
+        phifRef = PhiInsAnsatzInt(MfRef,eta,chis,chia,chi, lambda15,lambda25,lambda3,lambda35) # (+2*phi0+TTRef*MfRef) ?
     elif MfRef<fMRDJoinPhi:
         phifRef = PhiIntAnsatz(MfRef,eta,chi)+C1Int+C2Int*MfRef
     else:
@@ -839,14 +840,14 @@ def IMRPhenDPhase(Mfs,Mt_sec,eta,chis,chia,NF,fRef_in,phi0, lambda25=0,lambda3=0
         itrfMRDPhi = np.searchsorted(Mfs,fMRDJoinPhi)
         itrfInt = np.searchsorted(Mfs,imrc.PHI_fJoin_INS)
 
-    Phis[0:itrfInt] = PhiInsAnsatzInt(Mfs[0:itrfInt],eta,chis,chia,chi, lambda25,lambda3)-phifRefIns+TTRefIns*Mfs[0:itrfInt] #Ins range
+    Phis[0:itrfInt] = PhiInsAnsatzInt(Mfs[0:itrfInt],eta,chis,chia,chi, lambda15,lambda25,lambda3,lambda35)-phifRefIns+TTRefIns*Mfs[0:itrfInt] #Ins range
     Phis[itrfInt:itrfMRDPhi] = PhiIntAnsatz(Mfs[itrfInt:itrfMRDPhi],eta,chi)-phifRefInt+TTRefInt*Mfs[itrfInt:itrfMRDPhi] #intermediate range
     Phis[itrfMRDPhi:itrFCut] = PhiMRDAnsatzInt(Mfs[itrfMRDPhi:itrFCut],fRD,fDM,eta,chi)-phifRefMRD+TTRefMRD*Mfs[itrfMRDPhi:itrFCut]#MRD range
     #Phis[:itrFCut] -= t0*Mfs[:itrFCut]
 
     times = np.zeros(NF)
     if imrc.findT:
-        times[0:itrfInt] = DPhiInsAnsatzInt(Mfs[0:itrfInt],eta,chis,chia,chi, lambda25,lambda3)+TTRefIns #Ins range
+        times[0:itrfInt] = DPhiInsAnsatzInt(Mfs[0:itrfInt],eta,chis,chia,chi, lambda15,lambda25,lambda3,lambda35)+TTRefIns #Ins range
         times[itrfInt:itrfMRDPhi] = DPhiIntAnsatz(Mfs[itrfInt:itrfMRDPhi],eta,chi)+TTRefInt #intermediate range
         times[itrfMRDPhi:itrFCut] = DPhiMRD(Mfs[itrfMRDPhi:itrFCut],fRD,fDM,eta,chi)+TTRefMRD#MRD range
 

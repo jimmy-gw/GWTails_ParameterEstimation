@@ -32,12 +32,12 @@ fast_inner = jax.jit(inner)
 
 
 # compute Fisher information matrix at given parameter values
-def get_Fisher(x):
+def get_Fisher(x, lambda15=0, lambda25=0, lambda3=0, lambda35=0):
     Fisher = np.zeros((wg.ndim, wg.ndim))
     for i in range(wg.ndim):
-        partial_waveform1 = wg.partial_FD_waveform(x, i)
+        partial_waveform1 = wg.partial_FD_waveform(x, i, lambda15, lambda25, lambda3, lambda35)
         for j in range(i, wg.ndim):
-            partial_waveform2 = wg.partial_FD_waveform(x, j)
+            partial_waveform2 = wg.partial_FD_waveform(x, j, lambda15, lambda25, lambda3, lambda35)
             Fisher[i, j] = Fisher[j, i] = inner(partial_waveform1, partial_waveform2)
     return Fisher
 
@@ -56,12 +56,12 @@ fast_lnprior = jax.jit(ln_prior)
 
 
 # likelihood
-# NB: The local scope of lambda25 and lambda3 conflicts with the global scope of these 
-# variables (carried through the data_amp/phase_suppressed objects) in data.py.
-def ln_likelihood(x, temperature=1.0, lambda25=0, lambda3=0):
-    x_h22 = wg.get_h22(x, lambda25, lambda3)
+# NB: The local scope of the lambdas here differs from the global scope of these same 
+# variables that, in the rest of the repo, are carried through the data_amp/phase_suppressed objects from data.py.
+def ln_likelihood(x, temperature=1.0, lambda15=0, lambda25=0, lambda3=0, lambda35=0):
+    x_h22 = wg.get_h22(x, lambda15, lambda25, lambda3, lambda35)
     x_amp, x_phase = x_h22.amp, x_h22.phase
-    if lambda25 == 0 and lambda3 == 0:
+    if lambda15 == 0 and lambda25 == 0 and lambda3 == 0 and lambda35 == 0:
         integrand = (x_amp**2 + d.data_amp**2 - 2 * x_amp * d.data_amp * np.cos(x_phase - d.data_phase)) / S
     else:
         integrand = (x_amp**2 + d.data_amp_suppressed**2 - 2 * x_amp * d.data_amp_suppressed * np.cos(x_phase - d.data_phase_suppressed)) / S
@@ -70,11 +70,11 @@ def ln_likelihood(x, temperature=1.0, lambda25=0, lambda3=0):
 
 
 # posterior
-def ln_posterior(x, temperature=1.0, lambda25=0, lambda3=0):
+def ln_posterior(x, temperature=1.0, lambda15=0, lambda25=0, lambda3=0, lambda35=0):
     if np.any(x < wg.x_mins) or np.any(x > wg.x_maxs):
         return -np.inf
     else:
-        return ln_likelihood(x, temperature, lambda25, lambda3)
+        return ln_likelihood(x, temperature, lambda15, lambda25, lambda3, lambda35)
 
 
 

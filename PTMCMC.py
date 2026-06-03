@@ -8,6 +8,7 @@ import numpy as np
 import wave_gen as wg
 import likelihood as l
 
+#from numba import njit
 import data as d # for toggling parameters
 
 
@@ -23,6 +24,7 @@ vectorized_accept_reject = jit(vmap(accept_reject, in_axes=(0, 0, 0, 0, 0, 0)))
 
 
 # Parallel tempering swap
+
 def PT_swap(num_chains,
             chain_ndx,
             temp_ladder,
@@ -33,7 +35,7 @@ def PT_swap(num_chains,
             samples,
             lnposts,
             keys,
-            lambda25=0, lambda3=0):
+            lambda15=0, lambda25=0, lambda3=0, lambda35=0):
 
     # track swaps
     swap_map = list(np.copy(chain_ndx))
@@ -60,12 +62,11 @@ def PT_swap(num_chains,
 
     # record final states after all swaps
     final_states = np.array([states[swap_map_ndx] for swap_map_ndx in swap_map])
-    final_lnposts = np.array([lnpost_func(state, temp, lambda25, lambda3) for state, temp in zip(final_states, temp_ladder)])
+    final_lnposts = np.array([lnpost_func(state, temp, lambda15, lambda25, lambda3, lambda35) for state, temp in zip(final_states, temp_ladder)])
     samples[chain_ndx, iteration + 1] = final_states
     lnposts[chain_ndx, iteration + 1] = final_lnposts
     
     return
-
 
 
 def PTMCMC(num_samples,
@@ -74,7 +75,7 @@ def PTMCMC(num_samples,
            ln_posterior_func,
            jump_proposals,
            PT_swap_weight=20,
-           lambda25=0, lambda3=0):
+           lambda15=0, lambda25=0, lambda3=0, lambda35=0):
     
     # temperature ladder with geometric spacing
     chain_ndxs = np.arange(num_chains)
@@ -87,7 +88,7 @@ def PTMCMC(num_samples,
 
     # all chains start at x0
     samples[:, 0] = np.tile(x0, (num_chains, 1))
-    lnposts[:, 0] = np.array([ln_posterior_func(samp, temp, lambda25, lambda3)
+    lnposts[:, 0] = np.array([ln_posterior_func(samp, temp, lambda15, lambda25, lambda3, lambda35)
                               for samp, temp in zip(samples[:, 0], temp_ladder)])
     
     # organize jump proposals
@@ -150,7 +151,7 @@ def PTMCMC(num_samples,
             
             # evaluate posterior at new points
             new_states = np.array(new_states)
-            new_lnposts = jnp.array([ln_posterior_func(state, temp, lambda25, lambda3) for state, temp in zip(new_states, temp_ladder)])
+            new_lnposts = jnp.array([ln_posterior_func(state, temp, lambda15, lambda25, lambda3, lambda35) for state, temp in zip(new_states, temp_ladder)])
 
             # acceptance probabilities
             accept_probs = jnp.exp(new_lnposts - lnposts[chain_ndxs, i])
