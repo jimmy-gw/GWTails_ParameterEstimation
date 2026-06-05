@@ -136,7 +136,8 @@ def PTMCMC(num_samples,
                     jump_reject_counts=jump_reject_counts,
                     samples=samples,
                     lnposts=lnposts,
-                    keys=keys)
+                    keys=keys,
+                    lambda15=lambda15, lambda25=lambda25, lambda3=lambda3, lambda35=lambda35)
             
         else:  # intra-chain updates
 

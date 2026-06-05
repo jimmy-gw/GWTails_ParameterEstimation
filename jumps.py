@@ -13,12 +13,12 @@ import likelihood as l
 # Fisher jumps
 class Fisher:
 
-    def __init__(self, x0):
+    def __init__(self, x0, lambda15=0, lambda25=0, lambda3=0, lambda35=0):
         self.x0 = x0  # initial state where to compute Fisher
         self.get_Fisher_func = l.get_Fisher  # function to get Fisher
 
         # store initial Fisher
-        self.Fisher = self.get_Fisher_func(self.x0)
+        self.Fisher = self.get_Fisher_func(self.x0, lambda15, lambda25, lambda3, lambda35)
         self.vals, self.vecs = jnp.linalg.eigh(self.Fisher)
 
         # vectorize Fisher jump across chains
