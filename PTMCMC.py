@@ -24,7 +24,6 @@ vectorized_accept_reject = jit(vmap(accept_reject, in_axes=(0, 0, 0, 0, 0, 0)))
 
 
 # Parallel tempering swap
-
 def PT_swap(num_chains,
             chain_ndx,
             temp_ladder,
@@ -66,6 +65,8 @@ def PT_swap(num_chains,
     samples[chain_ndx, iteration + 1] = final_states
     lnposts[chain_ndx, iteration + 1] = final_lnposts
     
+    # 6/9/26 - Want 10-20% acceptance rate with given temperature ladder
+
     return
 
 
@@ -75,11 +76,13 @@ def PTMCMC(num_samples,
            ln_posterior_func,
            jump_proposals,
            PT_swap_weight=20,
-           lambda15=0, lambda25=0, lambda3=0, lambda35=0):
+           lambda15=0, lambda25=0, lambda3=0, lambda35=0,
+           temp0=1.3,
+           return_acceptance_rates=False):
     
     # temperature ladder with geometric spacing
     chain_ndxs = np.arange(num_chains)
-    temp_ladder = 1.3 ** chain_ndxs
+    temp_ladder = temp0 ** chain_ndxs # <-- TWEAK THIS NUMBER ACCORDING TO CHAIN OVERLAPS SO THAT CHAINS ARE CLOSER OR FARTHER APART
 
     # initialize samples and posterior values
     ndim = x0.shape[0]
@@ -101,7 +104,7 @@ def PTMCMC(num_samples,
         jump_functions.append(jump_function)
         jump_names.append(jump_function.__name__)
         jump_weights.append(weight)
-    # add PT jump proposal
+    # add PT jump proposal (Fisher and differential evolution jumps are already added)
     num_jump_types += 1
     jump_names.append('PT_swap')
     jump_weights.append(PT_swap_weight)
@@ -111,7 +114,7 @@ def PTMCMC(num_samples,
 
     # track jump proposal accept and reject counts
     jump_accept_counts = np.zeros((num_jump_types, num_chains))
-    jump_reject_counts = np.zeros((num_jump_types, num_chains))
+    jump_reject_counts = np.zeros((num_jump_types, num_chains)) # print accepts/(accepts+rejects)
 
     # main MCMC loop
     for i in range(num_samples - 1):
@@ -126,7 +129,7 @@ def PTMCMC(num_samples,
         # independent random keys for chain updates
         keys = jr.split(jr.PRNGKey(i), num_chains)
 
-        if jump_ndx == num_jump_types - 1:  # parallel tempering swap
+        if jump_ndx == num_jump_types - 1:  # parallel tempering swap (done if jump index is that of PT_swap [2])
             PT_swap(num_chains=num_chains,
                     chain_ndx=chain_ndxs,
                     temp_ladder=temp_ladder,
@@ -177,9 +180,18 @@ def PTMCMC(num_samples,
     # compute jump acceptance rates
     jump_reject_counts[-1, -1] += 1  # hottest chain doesn't swap with hotter chain, prevents NaN
     accept_rates = jump_accept_counts / (jump_accept_counts + jump_reject_counts)
+    accept_rates_by_jump_type={}
     print('Jump acceptance rates')
     for name, rate in zip(jump_names, accept_rates):
+        accept_rates_by_jump_type[name]=rate
         print(f'{name}: {rate}')
+
+    # Count acceptances and rejects (for funsies)
+#    for accepts, rejects in zip(jump_accept_counts[2], jump_reject_counts[2]):
+#        print(f'accepts:{accepts}, rejects:{rejects}')
     
+    if return_acceptance_rates:
+        return samples, lnposts, temp_ladder, accept_rates_by_jump_type
+
     return samples, lnposts, temp_ladder
                         
