@@ -17,6 +17,7 @@ import seaborn as sns
 #******************** Initialization ******************** ********************************************************
 #******************************************************** ********************************************************
 
+
 # Initialize pure unsuppressed waveform
 data_h22_0=d.data_h22
 data_amp_0, data_phase_0 = np.array(data_h22_0.amp), np.array(data_h22_0.phase)
@@ -44,12 +45,14 @@ for i in range(num_iters):
 #    lambda3s[i] = np.random.uniform(0,1)
 #    lambda35s[i] = np.random.uniform(0,1)
 
+
 #******************************************************** ********************************************************
 #************************ PTMCMC ************************ ********************************************************
 #******************************************************** ********************************************************
 
+
 # do PTMCMC!
-def PTMCMC_i(lambdas: list, num_samples=10000, num_chains=15, temp0=1.3, return_acceptance_rates=True): # 6/3/26: num_samples is taken to be 10K instead of 100K for now... this code might be wicked expensive
+def PTMCMC_i(lambdas: list, num_samples=10000, num_chains=15, temp0=1.3, temp_ladder_structure='geometric', return_acceptance_rates=True):
     '''Run PTMCMC for given lambda values, taken from the loop over the zipped lambda lists.'''
     lambda15, lambda25, lambda3, lambda35 = lambdas
 
@@ -67,6 +70,7 @@ def PTMCMC_i(lambdas: list, num_samples=10000, num_chains=15, temp0=1.3, return_
                                         PT_swap_weight=10,
                                         lambda15=lambda15, lambda25=lambda25, lambda3=lambda3, lambda35=lambda35,
                                         temp0=temp0,
+                                        temp_ladder_structure=temp_ladder_structure,
                                         return_acceptance_rates=return_acceptance_rates)
     
     return samples, lnposts, temp_ladder, acc_rates
@@ -96,6 +100,7 @@ def bayesFactor(lnZ1, lnZ2):
 #******************************************************** ********************************************************
 #******************* Helper functions ******************* ***************** (Plotting functions) *****************
 #******************************************************** ********************************************************
+
 
 # Unnecessary functions for evidence calculations
 def phasediff_vs_freq(lambdas1=[0,0,0,0], lambdas2=[d.lambda15,d.lambda25,d.lambda3,d.lambda35]):
@@ -176,3 +181,4 @@ def ladder_spacing(temp_ladder, avg_lnlikes, lnlikes_stdevs, alpha=1, print_chai
     if haxis=='B':
         betas=1./temp_ladder
         return betas, R
+

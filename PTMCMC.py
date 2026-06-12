@@ -78,11 +78,23 @@ def PTMCMC(num_samples,
            PT_swap_weight=20,
            lambda15=0, lambda25=0, lambda3=0, lambda35=0,
            temp0=1.3,
+           temp_ladder_structure='geometric',
            return_acceptance_rates=False):
     
-    # temperature ladder with geometric spacing
+    # temperature ladder with chosen spacing
     chain_ndxs = np.arange(num_chains)
-    temp_ladder = temp0 ** chain_ndxs # <-- TWEAK THIS NUMBER ACCORDING TO CHAIN OVERLAPS SO THAT CHAINS ARE CLOSER OR FARTHER APART
+     
+    if temp_ladder_structure=='geometric':
+        temp_ladder = temp0 ** chain_ndxs
+    elif temp_ladder_structure=='weighted_geometric':
+        temp_ladder = temp0 ** (0.5*chain_ndxs)
+    elif temp_ladder_structure=='linear':
+        temp_ladder = temp0 * chain_ndxs
+    elif temp_ladder_structure=='sqrt':
+        temp_ladder = temp0 * np.sqrt(chain_ndxs)
+    else:
+        raise ValueError('temp_ladder_structure must be one of [\'geometric\', \'linear\', \'sqrt\', \'weighted_geometric\']')
+   
 
     # initialize samples and posterior values
     ndim = x0.shape[0]
