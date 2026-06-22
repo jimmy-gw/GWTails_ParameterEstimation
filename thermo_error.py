@@ -34,6 +34,8 @@ RNMX = 1.0 - EPS
 
 @njit(cache=True)
 def _init_rng(seed: int) -> tuple[np.ndarray, np.ndarray]:
+    '''Initializes the RNG state for the C-style ran2 random number generator.
+    Returns a state vector and an initialization vector iv used by _ran2.'''
     state = np.empty(4, dtype=np.int64)
     state[0] = seed
     state[1] = 123456789
@@ -45,6 +47,8 @@ def _init_rng(seed: int) -> tuple[np.ndarray, np.ndarray]:
 
 @njit(cache=True)
 def _ran2(state: np.ndarray, iv: np.ndarray) -> float:
+    '''Implements the ran2 RNG from Numerical Recipes.
+    Advances the RNG state and returns a single uniform random number in (0, 1).'''
     if state[0] <= 0:
         if -state[0] < 1:
             state[0] = 1
@@ -84,6 +88,8 @@ def _ran2(state: np.ndarray, iv: np.ndarray) -> float:
 
 @njit(cache=True)
 def _gasdev(state: np.ndarray, iv: np.ndarray, gas_state: np.ndarray) -> float:
+    '''Generates Gaussian random variates using the Box-Muller method.
+    Uses _ran2 for uniform samples and caches one normal deviate for efficiency.'''
     if state[0] < 0:
         gas_state[0] = 0.0
     if gas_state[0] == 0.0:
@@ -103,6 +109,8 @@ def _gasdev(state: np.ndarray, iv: np.ndarray, gas_state: np.ndarray) -> float:
 
 @njit(cache=True)
 def _spline_y2(x: np.ndarray, y: np.ndarray, n: int) -> np.ndarray:
+    '''Computes the second derivatives for a natural cubic spline interpolation.
+    Returns the array y2 for spline construction from control points x, y.'''
     y2 = np.empty(n, dtype=np.float64)
     u = np.empty(n, dtype=np.float64)
     y2[0] = 0.0
@@ -122,6 +130,8 @@ def _spline_y2(x: np.ndarray, y: np.ndarray, n: int) -> np.ndarray:
 
 @njit(cache=True)
 def _splint(xa: np.ndarray, ya: np.ndarray, y2a: np.ndarray, n: int, x: float) -> float:
+    '''Evaluates the cubic spline at a point x using precomputed second derivatives.
+    Uses binary search to locate the interval and returns the interpolated value.'''
     klo = 0
     khi = n - 1
     while khi - klo > 1:
@@ -139,6 +149,15 @@ def _splint(xa: np.ndarray, ya: np.ndarray, y2a: np.ndarray, n: int, x: float) -
 
 @njit(cache=True)
 def _bootstrap_covariance(data: np.ndarray, bsteps: int, state: np.ndarray, iv: np.ndarray):
+    '''Estimates a covariance matrix from MCMC chain data using a threshold bootstrap.
+    Steps:
+        compute mean and standard deviation of each chain
+        choose bootstrap chunk size adaptively using sign changes
+        build bootstrap replicates from chunks
+        compute bootstrap standard deviations and normalized replicates
+        estimate correlation matrix and its variance
+        compute shrinkage factor and return a shrunk covariance matrix
+    Returns: covariance matrix, mean vector, chunk statistics, shrink factor, and metadata.'''
     nc, n = data.shape
     mu = np.empty(nc, dtype=np.float64)
     var = np.empty(nc, dtype=np.float64)
@@ -317,6 +336,9 @@ def _bootstrap_covariance(data: np.ndarray, bsteps: int, state: np.ndarray, iv: 
 
 @njit(cache=True)
 def _roughness_prior(points, values, y2, n, ns, smooth, ep):
+    '''Computes a prior term penalizing rough spline shapes.
+    Uses finite-difference approximations for second and first derivatives.
+    Returns a scalar log-prior that penalizes large curvature relative to slope.'''
     logp = 0.0
     for i in range(1, ns - 1):
         x = points[i]
@@ -334,6 +356,8 @@ def _roughness_prior(points, values, y2, n, ns, smooth, ep):
 
 @njit(cache=True)
 def _quad_form(icov, data, model):
+    '''Computes quadratic form (data - model)^T icov (data - model).
+    Used to evaluate Gaussian log-likelihood terms with the inverse covariance matrix.'''
     n = data.shape[0]
     av = 0.0
     for i in range(n):
@@ -345,6 +369,10 @@ def _quad_form(icov, data, model):
 
 @njit(cache=True)
 def _integrate_spline(points, values, y2, n, xmin, xmax):
+    '''Integrates a spline-weighted quantity over x using fixed trapezoidal integration.
+    Computes two integrals:
+        trap: integral of exp(x) * spline(x)
+        trp: integral of (exp(x+dx)-exp(x))/2 * (spline values) as a second measure'''
     trap = 0.0
     trp = 0.0
     x3 = xmin
@@ -356,11 +384,26 @@ def _integrate_spline(points, values, y2, n, xmin, xmax):
         y3 = _splint(points, values, y2, n, x3)
         trap += 0.5 * (x3 - x) * (np.exp(x3) * y3 + np.exp(x) * y)
         trp += 0.5 * (np.exp(x3) - np.exp(x)) * (y3 + y)
+
+#############################################################################################################################
+    print(f'~~~~~ Dunno what this code does but here are trap and trp: {trap}, {trp}~~~~~')
+#############################################################################################################################
+
     return trap, trp
 
 
 @njit(cache=True)
 def _run_rjmcmc(datax, datay, sigma, icov, base, steps, smooth, ep, state, iv):
+    '''Runs a reversible-jump MCMC algorithm on a spline representation of the integrand.
+    Uses control points at data locations and midpoints, with active/inactive spline nodes.
+    Proposes either dimension changes (add/remove control points) or parameter perturbations.
+    Evaluates proposals with log-likelihood and roughness prior, then accepts/rejects.
+    Records:
+        pchain: frequent parameter chain samples every 10 steps
+        chain: summary samples every 1000 steps
+        fit: final interpolated fit curve
+        summary: average evidence and KL/J statistics
+    Returns control points, initial and final spline values, prior references, integration estimates, chains, fit, and summary stats.'''
     nd = datax.shape[0]
     ns = 2 * nd - 1
     xmin = datax[0]
@@ -582,6 +625,13 @@ def _run_rjmcmc(datax, datay, sigma, icov, base, steps, smooth, ep, state, iv):
 
 
 def read_chain(path: Path):
+    '''Reads PTMCMC chain output from a text file using np.loadtxt.
+    Expects the first row to contain beta values and remaining rows to be log-likelihood samples.
+    Returns:
+        datax: log(beta) reversed so hottest chain comes first
+        chains: transposed log-likelihood samples aligned with datax
+        nd: number of temperatures
+        nl: number of samples'''
     arr = np.loadtxt(path, dtype=np.float64)
     if arr.ndim != 2 or arr.shape[0] < 2 or arr.shape[1] < 2:
         raise ValueError("input file must contain a beta row and at least one sample row")
@@ -595,10 +645,19 @@ def read_chain(path: Path):
 
 
 def write_columns(path: str, values: np.ndarray, fmt: str = "%.12g") -> None:
+    '''Writes a NumPy array to a text file using np.savetxt.
+    Used for outputting rawintegrand.dat, integrand.dat, boost.dat, etc.'''
     np.savetxt(path, values, fmt=fmt)
 
 
 def main() -> None:
+    '''Parses command-line arguments: datafile, --steps, --bootstrap-steps, --seed.
+    Reads the input chain, computes initial integrand statistics, and writes rawintegrand.dat.
+    Runs _bootstrap_covariance to estimate a covariance matrix and prints diagnostics.
+    Computes integrand.dat, trapezoidal evidence estimates, and statistical errors.
+    Calls _run_rjmcmc to perform spline RJMCMC and save chain outputs.
+    Writes output files: boost.dat, initialfit.dat, slopes.dat, pchain.dat, chain.dat, fit.dat.
+    Prints final evidence and KL/J metric summaries.'''
     parser = argparse.ArgumentParser(description="Numba/SciPy version of thermo_error.c")
     parser.add_argument("datafile", type=Path)
     parser.add_argument("--steps", type=int, default=1_000_000, help="RJMCMC steps")

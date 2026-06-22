@@ -10,6 +10,7 @@ from PTMCMC import PTMCMC
 import matplotlib.pyplot as plt
 import likelihood as l
 import seaborn as sns
+from scipy import special
 #from numba import njit
 
 
@@ -80,17 +81,20 @@ def PTMCMC_i(lambdas: list, num_samples=10000, num_chains=15, temp0=1.3, temp_la
 #*********************** Evidence *********************** ********************************************************
 #******************************************************** ********************************************************
 
+class TIData:
 
-### GET RELIABLE ERROR BARS ON THE MEAN LOG LIKELIHOODS BEFORE USING THIS FUNCTION
-# Calculate log evidence from meanlnlikes vs beta plot using thermodynamic integration
-def lnevidence_TI(lnposts, temp_ladder):
+    def __init__(self, betas, avg_lnlikes, lnlikes_stdevs, lambdas, color):
+        self.betas=betas
+        self.avg_lnlikes=avg_lnlikes
+        self.lnlikes_stdevs=lnlikes_stdevs
+        self.lambdas=lambdas
+        self.color=color
+        self.evidence=None
 
-    # code-in a return statement for avglnlikes_vs_betas()?
-
-    # Use trapezoidal rule to integrate <logL> over beta
-#    lnZ = np.trapz(avg_lnlikes, betas)
-#    return lnZ
-    pass
+    def generatePerturbedLogLikesToSpline(self):
+        '''Takes a <lnL> vs. beta plot, varies each point by a random amount chosen from a Gaussian distribution centered on 0 with 1 sigma = size of error bar, and then returns it. The output is to be Akima-splined.'''
+        avg_lnlikes_perturbed=self.avg_lnlikes+np.array([np.random.normal(0,sigma) for sigma in self.lnlikes_stdevs])
+        return avg_lnlikes_perturbed
 
 def bayesFactor(lnZ1, lnZ2):
     '''Calculate Bayes factor from two sets of log evidences.'''
@@ -155,7 +159,38 @@ def avglnlikes_vs_betas(temp_ladder, lnposts, num_samples): # pass in a figure a
 
     return betas, avg_lnlikes, lnlikes_stdevs
 
-def ladder_spacing(temp_ladder, avg_lnlikes, lnlikes_stdevs, alpha=1, print_chains=True, haxis='T'):
+def alpha_overlap(avg_lnlike_1, lnlikes_stdev_1, avg_lnlike_2, lnlikes_stdev_2, order=1):
+    '''Calculates overlap factor alpha according to Eq. (12) of Rathmore et al. 2004 [DOI: 10.1063/1.1831273].
+    avg_lnlike_2 and lnlike_stdev_2 are assumed greater than that of 1.'''
+
+    # (!!!) Before running this... how do the distributions of lnlikes get normalized?'
+
+    if order not in [1,2]:
+        raise ValueError(f'order={order} must be 1 or 2, denoting 1st- or 2nd-order asymptotic expansion')
+
+    if avg_lnlike_1>avg_lnlike_2: # avg_lnlike_2 is strictly larger than avg_lnlike_1, so swap them if this isn't the case
+        mucopy=avg_lnlike_1
+        avg_lnlike_1=avg_lnlike_2
+        avg_lnlike_2=mucopy
+
+        sigcopy=lnlikes_stdev_1
+        lnlikes_stdev_1=lnlikes_stdev_2
+        lnlikes_stdev_2=sigcopy
+    
+    dmu = avg_lnlike_2-avg_lnlike_1
+    sigm = (lnlikes_stdev_1+lnlikes_stdev_2) / 2.
+    z = dmu / sigm
+    leadTerm = special.erfc(z / (np.sqrt(8.)))
+
+    if order==1:
+        correxn = 0
+    elif order==2:
+        correxn = (-np.exp(-z**2 / 2) * (lnlikes_stdev_2/lnlikes_stdev_1-1)**2) / (np.pi * np.sqrt(8) * z) #I've set 'g' as it appears in eq. 13 to 2 just so I can write something complete. 
+        #^^ This correction is probably negligible for my purposes anyways. Check!
+
+    return leadTerm + correxn
+
+def ladder_spacing_ratio(temp_ladder, avg_lnlikes, lnlikes_stdevs, alphas, print_chains=True, haxis='T'):
     '''Returns R=\delta<lnL> / alpha(sigma_i+sigma_i+1) versus beta, where \delta refers to the difference between a chain and its hotter neighbor.
     R is used to determine the fidelity of the temperature ladder.'''
     # I might just tweak alpha manually but I know I can calculate it analytically too. Maybe build a separate helper function?
@@ -168,6 +203,7 @@ def ladder_spacing(temp_ladder, avg_lnlikes, lnlikes_stdevs, alpha=1, print_chai
     for j in range(len(temp_ladder)-1):
         dmeanlnL=avg_lnlikes[j+1]-avg_lnlikes[j]
         ddmeanlnL = None # error in the mean. Incorporate somehow w/ formula
+        alpha=alphas[j]
         reach=alpha*(lnlikes_stdevs[j]+lnlikes_stdevs[j+1])
         overlap = (reach>np.abs(dmeanlnL)) # do the errorbars overlap with one another up to a factor alpha
         R[j]=np.abs(dmeanlnL)/reach
@@ -181,4 +217,3 @@ def ladder_spacing(temp_ladder, avg_lnlikes, lnlikes_stdevs, alpha=1, print_chai
     if haxis=='B':
         betas=1./temp_ladder
         return betas, R
-
