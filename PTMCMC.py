@@ -75,31 +75,16 @@ def PTMCMC(num_samples,
            x0,
            ln_posterior_func,
            jump_proposals,
+           temp_ladder,
            PT_swap_weight=20,
            lambda15=0, lambda25=0, lambda3=0, lambda35=0,
-           temp0=1.3,
-           temp_ladder_structure='geometric',
            return_acceptance_rates=False):
-    
-    # temperature ladder with chosen spacing
-    chain_ndxs = np.arange(num_chains)
-     
-    if temp_ladder_structure=='geometric':
-        temp_ladder = temp0 ** chain_ndxs
-    elif temp_ladder_structure=='weighted_geometric':
-        temp_ladder = temp0 ** (0.5*chain_ndxs)
-    elif temp_ladder_structure=='linear':
-        temp_ladder = temp0 * chain_ndxs
-    elif temp_ladder_structure=='sqrt':
-        temp_ladder = temp0 * np.sqrt(chain_ndxs)
-    else:
-        raise ValueError('temp_ladder_structure must be one of [\'geometric\', \'linear\', \'sqrt\', \'weighted_geometric\']')
-   
 
     # initialize samples and posterior values
     ndim = x0.shape[0]
     samples = np.zeros((num_chains, num_samples, ndim))
     lnposts = np.zeros((num_chains, num_samples))
+    chain_ndxs=np.arange(num_chains)
 
     # all chains start at x0
     samples[:, 0] = np.tile(x0, (num_chains, 1))
@@ -193,17 +178,17 @@ def PTMCMC(num_samples,
     jump_reject_counts[-1, -1] += 1  # hottest chain doesn't swap with hotter chain, prevents NaN
     accept_rates = jump_accept_counts / (jump_accept_counts + jump_reject_counts)
     accept_rates_by_jump_type={}
-    print('Jump acceptance rates')
+#    print('Jump acceptance rates')
     for name, rate in zip(jump_names, accept_rates):
         accept_rates_by_jump_type[name]=rate
-        print(f'{name}: {rate}')
+#        print(f'{name}: {rate}')
 
     # Count acceptances and rejects (for funsies)
 #    for accepts, rejects in zip(jump_accept_counts[2], jump_reject_counts[2]):
 #        print(f'accepts:{accepts}, rejects:{rejects}')
     
     if return_acceptance_rates:
-        return samples, lnposts, temp_ladder, accept_rates_by_jump_type
+        return samples, lnposts, accept_rates_by_jump_type
 
-    return samples, lnposts, temp_ladder
+    return samples, lnposts
                         
