@@ -384,11 +384,7 @@ def _integrate_spline(points, values, y2, n, xmin, xmax):
         y3 = _splint(points, values, y2, n, x3)
         trap += 0.5 * (x3 - x) * (np.exp(x3) * y3 + np.exp(x) * y)
         trp += 0.5 * (np.exp(x3) - np.exp(x)) * (y3 + y)
-
-#############################################################################################################################
-    print(f'~~~~~ Dunno what this code does but here are trap and trp: {trap}, {trp}~~~~~')
-#############################################################################################################################
-
+        
     return trap, trp
 
 
@@ -700,7 +696,7 @@ def main() -> None:
 
     write_columns("integrand.dat", np.column_stack((datax, datay + output_offset, sigma)), fmt="%.12g")
 
-    trap_beta = np.trapz(datay, x=np.exp(datax))
+    trap_beta = np.trapezoid(datay, x=np.exp(datax))
     print(f"Trapezoid integrand in beta {trap_beta + base:f}")
 
     stat_var = 0.0
@@ -712,10 +708,10 @@ def main() -> None:
         stat_var += 0.25 * (((s1 * s1) + (s0 * s0)) * b1 * b1 + 2.0 * s0 * s0 * b1 * b0)
 
     weighted = np.exp(datax) * datay
-    trap_ln = np.trapz(weighted, x=datax)
+    trap_ln = np.trapezoid(weighted, x=datax)
     a2 = trap_ln / (1.0 - np.exp(datax[0]))
     shifted = np.exp(datax) * (datay - a2)
-    trap_shifted = np.trapz(shifted, x=datax)
+    trap_shifted = np.trapezoid(shifted, x=datax)
     if nd % 2 == 0:
         s0 = 0.5 * (datax[1] - datax[0]) * (shifted[1] + shifted[0])
         for j in range(1, nd // 2):
