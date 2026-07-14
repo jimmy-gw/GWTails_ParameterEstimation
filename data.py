@@ -12,6 +12,7 @@ chi1_inj = -0.11
 chi2_inj = 0.63
 log_dist_inj = 58.07
 phic_inj = np.pi / 1.2
+#tc_inj= something lol put this into mcmc
 x_inj = np.array([m1_inj, m2_inj, chi1_inj, chi2_inj, log_dist_inj, phic_inj])
 
 lambda15 = 1
