@@ -39,11 +39,12 @@ def get_Fisher(x, lambda15=0, lambda25=0, lambda3=0, lambda35=0):
         for j in range(i, wg.ndim):
             partial_waveform2 = wg.partial_FD_waveform(x, j, lambda15, lambda25, lambda3, lambda35)
             Fisher[i, j] = Fisher[j, i] = inner(partial_waveform1, partial_waveform2)
+    #print(f'Fisher={Fisher}')
     return Fisher
 
 
 # uniform prior
-def ln_prior(x, temperature=1.0):
+def ln_prior(x):
     out_of_bounds = jnp.logical_or(jnp.any(x < wg.x_mins),
                                    jnp.any(x > wg.x_maxs))
     def out_of_bounds_case():
@@ -58,15 +59,28 @@ fast_lnprior = jax.jit(ln_prior)
 # likelihood
 # NB: The local scope of the lambdas here differs from the global scope of these same 
 # variables that, in the rest of the repo, are carried through the data_amp/phase_suppressed objects from data.py.
+
+##################################################################################################################################################
+# Code quarantine: the integrands' dependence on data.py vars might amount to
+# something different than what is needed in PTMCMC. I think ultimately they
+# have to be noise weighted inner products (d-h|d-h) where d (or h? idk I'm brainfried)
+# is totally unsuppressed
 def ln_likelihood(x, temperature=1.0, lambda15=0, lambda25=0, lambda3=0, lambda35=0):
     x_h22 = wg.get_h22(x, lambda15, lambda25, lambda3, lambda35)
     x_amp, x_phase = x_h22.amp, x_h22.phase
-    if lambda15 == 0 and lambda25 == 0 and lambda3 == 0 and lambda35 == 0:
-        integrand = (x_amp**2 + d.data_amp**2 - 2 * x_amp * d.data_amp * np.cos(x_phase - d.data_phase)) / S
-    else:
-        integrand = (x_amp**2 + d.data_amp_suppressed**2 - 2 * x_amp * d.data_amp_suppressed * np.cos(x_phase - d.data_phase_suppressed)) / S
+    integrand = (x_amp**2 + d.data_amp**2 - 2 * x_amp * d.data_amp * np.cos(x_phase - d.data_phase)) / S
     lnlike = -2. * np.sum(integrand) * wg.df
     return lnlike / temperature
+
+def loglike_untempered_unsuppressed(x):
+    x_h22 = wg.get_h22(x)
+    x_amp, x_phase = x_h22.amp, x_h22.phase
+    integrand = (x_amp**2 + d.data_amp**2 - 2 * x_amp * d.data_amp * np.cos(x_phase - d.data_phase)) / S
+    lnlike = -2. * np.sum(integrand) * wg.df
+    return lnlike
+
+##################################################################################################################################################
+
 
 
 # posterior

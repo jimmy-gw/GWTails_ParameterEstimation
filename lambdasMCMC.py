@@ -82,11 +82,10 @@ def PTMCMC_i(lambdas, temp_ladder, num_samples=10000, num_chains=15, return_acce
 #********** Adaptive temperature ladder spacing ********* ********************************************************
 #******************************************************** ********************************************************
 
-def construct_roughTIdata(temp0, num_chains):
+def construct_roughTIdata(temp0, num_chains, num_samples):
     ''' Obtains rough estimates of <lnL>(T) and \sigma(T) as functions of temperature. These are then used to compute the optimal PTMCMC temperature ladder in the iterative manner described in Rathore et al. (2004) [DOI: 10.1063/1.1831273].'''
     ## To save computing time while constructing the temp ladder, this must only be done ONCE. Hence, this is a helper function.
     rough_tl=temp0**(np.arange(num_chains))
-    num_samples=75000 # keep high to reduce MC noise
 
     print(r'Running PTMCMC to obtain mock <lnL>(beta) and \sigma_{lnL}(beta) curves...')
     __, lnposts, ___ = PTMCMC_i(lambdas=[0,0,0,0], # keep suppression off until I know very well how my adaptive spacing algo works, reevaluate when/if it must be considered
@@ -107,7 +106,7 @@ def construct_roughTIdata(temp0, num_chains):
     # to be passed into construct_temp_ladder in order to calculate a continuous version of R-R_{tgt}=0
     return tl_akima, avg_lnlikes_akima, lnlikes_stdevs_akima
 
-def construct_temp_ladder(akima_estimates, tl_ansatz=np.array([1.,3.5]), Tmax=100000000., counter=1):
+def construct_temp_ladder(akima_estimates, tl_ansatz=np.array([1.,3.5]), Tmax=1000000., counter=1):
     '''Iterative calculation of Eq. (15) of Rathore et al. 2004 [@DOI: 10.1063/1.1831273], which returns an approximately-optimal temperature ladder such that PT swap acceptance rates in the range of 10-20%.
     Input akima_estimates as a tuple with globally-scoped variables (tl_akima, avg_lnlikes_akima, lnlikes_stdevs_akima).
         tl_akima: np.array (shape~1e6)
@@ -120,6 +119,7 @@ def construct_temp_ladder(akima_estimates, tl_ansatz=np.array([1.,3.5]), Tmax=10
     print(f'*** Iteration #{counter} ***')
 
     tl_akima, avg_lnlikes_akima, lnlikes_stdevs_akima = akima_estimates
+    betas_akima = 1./tl_akima
     lastT=tl_ansatz[-1]
 
     # R-statistic helper function
@@ -129,17 +129,23 @@ def construct_temp_ladder(akima_estimates, tl_ansatz=np.array([1.,3.5]), Tmax=10
     if counter==1:
         print(f'First R: {Ri(tl_ansatz[1],tl_ansatz[0],avg_lnlikes_akima,lnlikes_stdevs_akima)}')
 
-    ## make a loop that adaptively guesses nextT values until the R value falls between 0.9 and 1.1, then move on to the next iteration
+    
+    # Code quarantine: stochastic chain searching is inefficient and lazy. Determine approximate root of Ri(nextT,lastT)-1 using a more deterministic method
+    ##########################################################################
+    # make a loop that adaptively guesses nextT values until the R value falls between 0.9 and 1.1, then move on to the next iteration
     # Start w/ R<<1 and work upwards
     nextT=lastT*1.01
     R_adapt=Ri(nextT, lastT, avg_lnlikes_akima, lnlikes_stdevs_akima)
-    while R_adapt<0.9 or R_adapt>1.1:
+    while R_adapt<0.95 or R_adapt>1.05:
         assert nextT>lastT, "Temperature ladder must be strictly increasing."
-        if R_adapt<0.9:
+        if R_adapt<0.95:
             nextT+=nextT*np.random.uniform(0.1,0.3) # increase temperature guess by as little as 10% or as much as 30%
-        if R_adapt>1.1:
+        if R_adapt>1.05:
             nextT-=nextT*np.random.uniform(0.01,0.2) # decrease temperature guess by as little as 1% or as much as 20%
         R_adapt=Ri(nextT,lastT,avg_lnlikes_akima,lnlikes_stdevs_akima) 
+    ##########################################################################
+
+    # Use reddemcee? https://reddemcee.readthedocs.io/
 
     tl_ansatz=np.append(tl_ansatz, nextT)
 

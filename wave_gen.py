@@ -71,7 +71,13 @@ epsilon = 1.e-6
 def partial_FD_waveform(x, deriv_ndx, lambda15=0, lambda25=0, lambda3=0, lambda35=0):
     # central finite differencing
     delta_x = np.zeros(ndim)
-    delta_x[deriv_ndx] = epsilon
-    return (FD_waveform(x + delta_x, lambda15, lambda25, lambda3, lambda35) - FD_waveform(x - delta_x, lambda15, lambda25, lambda3, lambda35)) / (2. * epsilon)
+    delta_x[deriv_ndx] = np.abs(epsilon*x[deriv_ndx]) # don't keep at constant 1e-6; make them 1e-6 times the parameter values
+
+    # sanity check that differential perturbations are 1e-6 consistently
+#    print(f'x={x[deriv_ndx]}, delta_x={delta_x[deriv_ndx]}, ratio={delta_x[deriv_ndx]/x[deriv_ndx]}')
+
+    deriv=(FD_waveform(x + delta_x, lambda15, lambda25, lambda3, lambda35) - FD_waveform(x - delta_x, lambda15, lambda25, lambda3, lambda35)) / (2. * delta_x[deriv_ndx])
+
+    return deriv
 
 
