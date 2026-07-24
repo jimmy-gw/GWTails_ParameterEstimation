@@ -31,7 +31,8 @@ def inner(a, b):
 fast_inner = jax.jit(inner)
 
 
-# compute Fisher information matrix at given parameter values
+# (DEPRECATED) compute Fisher information matrix at given parameter values
+# directly evaluate (h_{,i} | h_{,j})
 def get_Fisher(x, lambda15=0, lambda25=0, lambda3=0, lambda35=0):
     Fisher = np.zeros((wg.ndim, wg.ndim))
     for i in range(wg.ndim):
@@ -39,8 +40,58 @@ def get_Fisher(x, lambda15=0, lambda25=0, lambda3=0, lambda35=0):
         for j in range(i, wg.ndim):
             partial_waveform2 = wg.partial_FD_waveform(x, j, lambda15, lambda25, lambda3, lambda35)
             Fisher[i, j] = Fisher[j, i] = inner(partial_waveform1, partial_waveform2)
-    #print(f'Fisher={Fisher}')
+
+    #print(f'Fisher (normal):{Fisher}')
+    #assert np.linalg.det(Fisher)!=0, f"Fisher={Fisher} must have nonzero determinant."
+    #assert np.all(np.linalg.eigvals(Fisher)>0), f"Fisher={Fisher} must have positive eigenvalues {np.linalg.eigvals(Fisher)}"
+
     return Fisher
+
+
+# compute Fisher information matrix at given parameter values
+# evaluate Fisher elements using Eq. 9 of https://arxiv.org/pdf/1007.4820
+def get_fastFisher(x, lambda15=0, lambda25=0, lambda3=0, lambda35=0):
+
+    # Define quantities that are reusable for each partial_ampphase call
+    h = wg.get_h22(x, lambda15, lambda25, lambda3, lambda35)
+    phi = h.phase
+
+    # Partial derivative (via central finite differencing) helper fxn 
+    # (used for Fisher evaluation below)
+    def partial_ampphase(mode, x, deriv_ndx, epsilon=1e-8):
+        assert mode in ['A','phi'], f"Partial must be specified to be evaluated on AmpPhaseFDWaveform.amp (\"A\") or AmpPhaseFDWaveform.phase (\"phi\")."
+
+        d_kh=wg.partial_FD_waveform(x, deriv_ndx, lambda15, lambda25, lambda3, lambda35, epsilon)
+        if mode=='A':
+            return np.real(d_kh * np.exp(-1.j * phi))
+        if mode=='phi':
+            return np.imag(d_kh * np.exp(-1.j * phi)) # = A*\phi_{,k}, but the A carries twice into the A**2\phi_{,i}\phi_{,j} term in (h_{,j} | h_{,j})
+
+    Fisher = np.zeros((wg.ndim, wg.ndim))
+    for i in range(wg.ndim):
+        d_iA, Ad_iphi = partial_ampphase('A',x,i), partial_ampphase('phi',x,i)
+        for j in range(i,wg.ndim):
+            d_jA, Ad_jphi = partial_ampphase('A',x,j), partial_ampphase('phi',x,j)
+            # discrete integration
+            integrand = (d_iA * d_jA + Ad_iphi * Ad_jphi) / S
+            Fisher[i,j] = Fisher[j,i] = 4. * np.sum(integrand) * wg.df
+
+    # Sanity checks
+    #print(f'Fisher (fast):{Fisher}')
+    #assert np.linalg.det(Fisher)!=0, f"Fisher={Fisher} must have nonzero determinant."
+    #assert np.all(np.linalg.eigvals(Fisher)>0), f"Fisher={Fisher} must have positive eigenvalues {np.linalg.eigvals(Fisher)}"
+
+    return Fisher
+
+
+# Correlation matrix
+def get_correlation_matrix(fisher):
+    corr = np.zeros((wg.ndim, wg.ndim))
+    for i in range(wg.ndim):
+         for j in range(i,wg.ndim):
+             corr[i,j] = corr[j,i] = fisher[i,j]/np.sqrt(fisher[i,i]*fisher[j,j])
+    return corr
+
 
 
 # uniform prior

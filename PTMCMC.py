@@ -126,7 +126,7 @@ def PTMCMC(num_samples,
         # independent random keys for chain updates
         keys = jr.split(jr.PRNGKey(i), num_chains)
 
-        if jump_ndx == num_jump_types - 1:  # parallel tempering swap (done if jump index is that of PT_swap [2])
+        if jump_ndx == num_jump_types - 1:  # parallel tempering swap (run if jump index is that of PT_swap [2])
             PT_swap(num_chains=num_chains,
                     chain_ndx=chain_ndxs,
                     temp_ladder=temp_ladder,

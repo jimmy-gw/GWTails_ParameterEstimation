@@ -86,7 +86,6 @@ def construct_roughTIdata(temp0, num_chains, num_samples):
     ''' Obtains rough estimates of <lnL>(T) and \sigma(T) as functions of temperature. These are then used to compute the optimal PTMCMC temperature ladder in the iterative manner described in Rathore et al. (2004) [DOI: 10.1063/1.1831273].'''
     ## To save computing time while constructing the temp ladder, this must only be done ONCE. Hence, this is a helper function.
     rough_tl=temp0**(np.arange(num_chains))
-
     print(r'Running PTMCMC to obtain mock <lnL>(beta) and \sigma_{lnL}(beta) curves...')
     __, lnposts, ___ = PTMCMC_i(lambdas=[0,0,0,0], # keep suppression off until I know very well how my adaptive spacing algo works, reevaluate when/if it must be considered
                                       temp_ladder=rough_tl,

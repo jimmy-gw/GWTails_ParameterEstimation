@@ -13,10 +13,10 @@ from IMRPhenomD.IMRPhenomD import AmpPhaseFDWaveform, IMRPhenomDGenerateh22FDAmp
 
 
 # parameter attributes
-x_mins = np.array([2.5, 2.5, -0.97, -0.97, np.log(1.e7 * imrc.PC_SI), 0.])
-x_maxs = np.array([100.0, 100.0, 0.97, 0.97, np.log(1.e9 * imrc.PC_SI), np.pi])
+x_mins = np.array([2.5, 2.5, -0.97, -0.97, np.log(1.e7 * imrc.PC_SI), 0., 0.])
+x_maxs = np.array([100.0, 100.0, 0.97, 0.97, np.log(1.e9 * imrc.PC_SI), np.pi, 5])
 ndim = x_mins.shape[0]
-x_labels = [r'$m_1\;(M_\odot)$', r'$m_2\;(M_\odot)$', r'$\chi_1$', r'$\chi_2$', r'$\ln(D_L/1m)$', r'$\phi_c$']
+x_labels = [r'$m_1\;(M_\odot)$', r'$m_2\;(M_\odot)$', r'$\chi_1$', r'$\chi_2$', r'$\ln(D_L/1m)$', r'$\phi_c$', r'$t_c$']
 
 
 # frequency bins
@@ -34,7 +34,7 @@ def get_h22(x, lambda15=0, lambda25=0, lambda3=0, lambda35=0):
             
     # mass in solar masses
     # distance in ln(luminosity distance / meter)
-    m1, m2, chi1, chi2, log_dist, phic = x
+    m1, m2, chi1, chi2, log_dist, phic, tc = x
     
     # convert masses in kg
     m1_SI =  m1*imrc.MSUN_SI
@@ -55,7 +55,10 @@ def get_h22(x, lambda15=0, lambda25=0, lambda3=0, lambda35=0):
     #the first evaluation of the amplitudes and phase will always be much slower, because it must compile everything
     h22 = AmpPhaseFDWaveform(Nf, f, amp_imr, phase_imr, time_imr, timep_imr)
     h22 = IMRPhenomDGenerateh22FDAmpPhase(h22, f, phic, MfRef_in, m1_SI, m2_SI, chi1, chi2, distance, lambda15, lambda25, lambda3, lambda35)
-    
+
+    # Modulate phase by coalescence time shift
+    h22.phase+=2.*np.pi*h22.freq*tc
+
     return h22
 
 
@@ -67,14 +70,13 @@ def FD_waveform(x,lambda15=0,lambda25=0,lambda3=0,lambda35=0):
 
 # compute partial derivative of frequency-domain waveform
 # (used for Fisher evaluation)
-epsilon = 1.e-6
-def partial_FD_waveform(x, deriv_ndx, lambda15=0, lambda25=0, lambda3=0, lambda35=0):
+def partial_FD_waveform(x, deriv_ndx, lambda15=0, lambda25=0, lambda3=0, lambda35=0, epsilon=1.e-7):
     # central finite differencing
     delta_x = np.zeros(ndim)
-    delta_x[deriv_ndx] = np.abs(epsilon*x[deriv_ndx]) # don't keep at constant 1e-6; make them 1e-6 times the parameter values
+    delta_x[deriv_ndx] = np.abs(epsilon*x[deriv_ndx])
 
     # sanity check that differential perturbations are 1e-6 consistently
-#    print(f'x={x[deriv_ndx]}, delta_x={delta_x[deriv_ndx]}, ratio={delta_x[deriv_ndx]/x[deriv_ndx]}')
+    #print(f'x={x[deriv_ndx]}, delta_x={delta_x[deriv_ndx]}, ratio={delta_x[deriv_ndx]/x[deriv_ndx]}')
 
     deriv=(FD_waveform(x + delta_x, lambda15, lambda25, lambda3, lambda35) - FD_waveform(x - delta_x, lambda15, lambda25, lambda3, lambda35)) / (2. * delta_x[deriv_ndx])
 

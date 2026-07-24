@@ -68,6 +68,8 @@ def PNPhasingSeriesTaylorF2(eta,chis,chia,lambda15=0,lambda25=0,lambda3=0,lambda
     chi2, Component of dimensionless spin 2 along Lhat
     """
 
+    #TODO Redefine this entire coefficient generation script with singular suppression parameter _Lambda_ once all tail effects have been properly traced
+
     if eta<0.25:
         delta = np.sqrt(1-4*eta)
     else:
@@ -87,22 +89,17 @@ def PNPhasingSeriesTaylorF2(eta,chis,chia,lambda15=0,lambda25=0,lambda3=0,lambda
     v0 = 1.
     v1 = 0.
     v2 = 5/9*(743/84+11*eta)
+    v3 = -16*np.pi*(1-lambda15)
     v4 = 5/72*(3058673/7056+5429/7*eta+617*eta**2)
-    v5 = 5/9*np.pi*(7729/84-13*eta)
-    
-    
-    # # # # # Tail terms at 1.5PN, 2.5PN, 3PN, 3.5PN order - see arXiv:0907.0700, Eq. 3.18 # # # # #
-    v3 = -16*np.pi*(1-lambda15) # 1.5PN first-order tail term
-    vlogv5 = 5/3*np.pi*(7729/84-13*eta)*(1-lambda25) # Logarithmic term at 2.5PN order; PN corrections to 1st-order tail and Christodolou memory
-    vlogv6 = -6848/21*(1-lambda3) # Another logarithmic term at 3PN order; tail-of-tail
-    
-    # For my purposes this term need not be toggled, but I include it for completeness.
-    v7 = np.pi*(77096675/254016+378515/1512*eta-74045/756*eta**2)*(1-lambda35) # 3.5PN memory correction term MIXED WITH A LOT OF OTHER STUFF; see arXiv:0907.0700, Eq. 3.18.
-
+    v5 = 5/9*np.pi*(7729/84-13*eta)    
     v6 = (11583231236531/4694215680-640/3*np.pi**2-6848/21*imrc.GAMMA) \
             +(-15737765635/3048192+2255/12*np.pi**2)*eta+76055/1728*eta**2-127825/1296*eta**3 \
             +-6848/21*np.log(4.)
-    
+    v7 = np.pi*(77096675/254016+378515/1512*eta-74045/756*eta**2)*(1-lambda35)
+
+    vlogv5 = 5/3*np.pi*(7729/84-13*eta)*(1-lambda25)
+    vlogv6 = -6848/21*(1-lambda3)
+
     
 #     Compute 2.0PN SS, QM, and self-spin */
 #     See Eq. (6.24) in arXiv:0810.5336

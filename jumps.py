@@ -15,7 +15,7 @@ class Fisher:
 
     def __init__(self, x0, lambda15=0, lambda25=0, lambda3=0, lambda35=0):
         self.x0 = x0  # initial state where to compute Fisher
-        self.get_Fisher_func = l.get_Fisher  # function to get Fisher
+        self.get_Fisher_func = l.get_fastFisher  # function to get Fisher (fast: Cornish 2013 https://arxiv.org/pdf/1007.4820)
 
         # store initial Fisher
         self.Fisher = self.get_Fisher_func(self.x0, lambda15, lambda25, lambda3, lambda35)
