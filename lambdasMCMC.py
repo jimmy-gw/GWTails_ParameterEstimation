@@ -1,5 +1,4 @@
-'''MCMC analysis for parameter estimation of toggling parameters lambda15, lambda25, lambda3, and lambda35[?].'''
-
+'''MCMC analysis for parameter estimation of suppression parameter _Lambda'''
 
 
 import data as d
@@ -12,6 +11,13 @@ import likelihood as l
 import seaborn as sns
 from scipy import special
 from scipy.interpolate import Akima1DInterpolator
+import IMRPhenomD.IMRPhenomD_const
+
+# corner plot helper packages
+import matplotlib.patches as mpatches
+from corner import corner
+from scipy.stats import multivariate_normal
+
 
 #from numba import jit
 
@@ -26,28 +32,11 @@ data_h22_0=d.data_h22
 data_amp_0, data_phase_0 = np.array(data_h22_0.amp), np.array(data_h22_0.phase)
 data_FD_waveform_0 = d.data_FD_waveform
 
-# Initialize suppression MCMC parameters
 
-###############################################
-# Figure out how to cheapen the cost of doing PTMCMCs before increasing this number (currently set to 3 for testing purposes) 
-# maybe find right placement for @njit decorators? Learn how jax.jit() works too
-num_iters = 2
-###############################################
 
-lambda15s = np.zeros(num_iters)
-lambda25s = np.zeros(num_iters)
-lambda3s = np.zeros(num_iters)
-lambda35s = np.zeros(num_iters)
+Lambdas = np.array([0,1])
+num_iters = np.shape(Lambdas)
 itercolors = sns.color_palette("Dark2", n_colors=num_iters)
-
-# 6/9/26: While configuring the PT swaps for 10-20% acceptance rates based on lnL stdev overlap, don't apply random suppression to injected data
-
-for i in range(num_iters):
-    lambda15s[i] = i#np.random.uniform(0,1)
-#    lambda25s[i] = np.random.uniform(0,1)
-#    lambda3s[i] = np.random.uniform(0,1)
-#    lambda35s[i] = np.random.uniform(0,1)
-
 
 #******************************************************** ********************************************************
 #************************ PTMCMC ************************ ********************************************************
@@ -55,12 +44,11 @@ for i in range(num_iters):
 
 
 # do PTMCMC!
-def PTMCMC_i(lambdas, temp_ladder, num_samples=10000, num_chains=15, return_acceptance_rates=True):
+def PTMCMC_i(_Lambda, temp_ladder, num_samples=10000, num_chains=15, return_acceptance_rates=True):
     '''Run PTMCMC for given lambda values, taken from the loop over the zipped lambda lists.'''
-    lambda15, lambda25, lambda3, lambda35 = lambdas
 
     # jump proposals
-    Fisher = j.Fisher(d.x_inj, lambda15, lambda25, lambda3, lambda35)
+    Fisher = j.Fisher(d.x_inj, _Lambda)
     diff_evol = j.DifferentialEvolution(len_history=100)
     jump_proposals = [[Fisher.vectorized_Fisher_jump, 20],
                     [diff_evol.vectorized_DE_jump, 20]]
@@ -72,7 +60,7 @@ def PTMCMC_i(lambdas, temp_ladder, num_samples=10000, num_chains=15, return_acce
                                         jump_proposals=jump_proposals,
                                         temp_ladder=temp_ladder,
                                         PT_swap_weight=20,
-                                        lambda15=lambda15, lambda25=lambda25, lambda3=lambda3, lambda35=lambda35,
+                                        _Lambda=_Lambda,
                                         return_acceptance_rates=return_acceptance_rates)
     
     return samples, lnposts, acc_rates
@@ -87,7 +75,7 @@ def construct_roughTIdata(temp0, num_chains, num_samples):
     ## To save computing time while constructing the temp ladder, this must only be done ONCE. Hence, this is a helper function.
     rough_tl=temp0**(np.arange(num_chains))
     print(r'Running PTMCMC to obtain mock <lnL>(beta) and \sigma_{lnL}(beta) curves...')
-    __, lnposts, ___ = PTMCMC_i(lambdas=[0,0,0,0], # keep suppression off until I know very well how my adaptive spacing algo works, reevaluate when/if it must be considered
+    __, lnposts, ___ = PTMCMC_i(_Lambda=0, # keep suppression off until I know very well how my adaptive spacing algo works, reevaluate when/if it must be considered
                                       temp_ladder=rough_tl,
                                       num_samples=num_samples,
                                       num_chains=len(rough_tl),
@@ -170,12 +158,12 @@ def construct_temp_ladder(akima_estimates, tl_ansatz=np.array([1.,3.5]), Tmax=10
 
 class TIData:
 
-    def __init__(self, betas, lnlikes, avg_lnlikes, lnlikes_stdevs, lambdas, color, filenum):
+    def __init__(self, betas, lnlikes, avg_lnlikes, lnlikes_stdevs, _Lambda, color, filenum):
         self.betas=betas
         self.lnlikes=lnlikes # want this to be a 2D array where each column denotes a beta value with its list of num_samples lnlikes
         self.avg_lnlikes=avg_lnlikes
         self.lnlikes_stdevs=lnlikes_stdevs
-        self.lambdas=lambdas
+        self._Lambda=_Lambda
         self.color=color
         self.filenum=filenum
 
@@ -218,19 +206,44 @@ def construct_te_dattab(betas, lnlikes):
 #******************************************************** ********************************************************
 
 
+class PTSamples:
+    def __init__(self, samples, _Lambda):
+        # Basic attributes
+        self.samples=samples
+        self._Lambda=_Lambda
+
+        # Dependent quantities
+        self.Ms=self.get_Ms(self.samples)          # shape: (num_chains, num_samples)
+        self.fIMs=IMRPhenomD.IMRPhenomD_const.PHI_fJoin_INS/self.Ms  # shape: (num_chains, num_samples)
+        # Chirp mass?
+        # Spin variables s_l, sigma_l, \chi_s, \chi_a?
+
+    def get_Ms(self, samps):
+        '''Return total mass by sample'''
+        m1_samples = samps[:, :, 0]   # shape: (num_chains, num_samples)
+        m2_samples = samps[:, :, 1]   # shape: (num_chains, num_samples)
+        M_samples=m1_samples+m2_samples
+        return M_samples
+
+    def get_DQsamples(self):
+        '''Returns samples of dependent quantities (DQs) with shape (num_chains, num_samples, {num_DQs}).'''
+        return self.Ms, self.fIMs
+
+
+
 # vv Unnecessary for evidence calculations
-def phasediff_vs_freq(lambdas1=[0,0,0,0], lambdas2=[d.lambda15,d.lambda25,d.lambda3,d.lambda35]):
+def phasediff_vs_freq(lambda1=0, lambda2=[d._Lambda]):
     '''Calculate and plot (as a fxn of frequency) the phase difference \Psi_2-\Psi1 between two waveforms h22_2 and h22_1, 
     with the same injected parameters but differing degrees of suppression. Suppression for each waveform is controlled 
     through lambdas1 and lambdas2, each a list of lambda15 thru lambda35.'''
-    h22_1 = wg.get_h22(d.x_inj, lambdas1[0], lambdas1[1], lambdas1[2], lambdas1[3])
-    h22_2 = wg.get_h22(d.x_inj, lambdas2[0], lambdas2[1], lambdas2[2], lambdas2[3])
+    h22_1 = wg.get_h22(d.x_inj, lambda1)
+    h22_2 = wg.get_h22(d.x_inj, lambda2)
     delta_psi = h22_2.phase - h22_1.phase
     
     plt.plot(wg.f,delta_psi)
     plt.xlabel('frequency [Hz]')
     plt.ylabel(r'$\Delta\Psi(f)=\Psi_{2}(f)-\Psi_{1}(f)$')
-    plt.title('lambdas1={}, lambdas2={}'.format(lambdas1, lambdas2))
+    plt.title(rf'$\lambda_1$={lambda1}, $\lambda_2$={lambda2}')
     plt.show()
 
 
@@ -243,7 +256,7 @@ def chain_heatmap(temp_ladder, lnposts, num_chains):
 
     for j, (temp, color) in enumerate(zip(temp_ladder[::-1], chain_colors)):
         plt.plot(lnposts[::-1][j] * temp, color=color, label=f'T = {round(temp, 3)}')
-    plt.title('PTMCMC lambdavec=[nothing,here,asof,yet]') # figure out how to include toggle parameter values in title
+    plt.title('PTMCMC lambda=[nothinghereasofyet]') # figure out how to include toggle parameter values in title
     plt.xlabel('MCMC iteration')
     plt.ylabel('log(likelihood)')
     plt.legend(loc='lower right')
@@ -255,13 +268,63 @@ def trace_temp1chain(samples):
     for i in range(wg.ndim):
         plt.plot(samples[0,:,i], color=f'C{i}', alpha=0.6)
         plt.axhline(d.x_inj[i], color=f'C{i}', alpha=0.8, label=wg.x_labels[i])
-    plt.title('PTMCMC lambdavec=[alsonothing,here,asof,yet]') # figure out how to include toggle parameter values in title
+    plt.title('PTMCMC lambda=[alsonothinghereasofyet]') # figure out how to include toggle parameter values in title
     plt.xlabel('MCMC iteration')
     plt.ylabel('parameter value')
     plt.legend(loc='lower right')
     plt.show()
 
+def cornerplots(samples, _Lambda=0):
+    '''Creates corner plots displaying the results of PTMCMC sampling, as well as Fisher samples.'''
+    # for reference, samples is the first output of PTMCMC()
+    num_samples=np.shape(samples)[1]
+    burnin=num_samples//5
+
+    # PTMCMC samples
+    pt_samples = samples[0, burnin:]
+    pt_n = pt_samples.shape[0]
+    pt_weights = np.full(pt_n, 1.0 / pt_n)
+
+    x0=d.x_inj
+    labels=wg.x_labels
+
+
+    # Fisher samples
+    Fisher = j.Fisher(d.x_inj, _Lambda)
+    cov = np.linalg.inv(Fisher.Fisher)
+    Fisher_samples = multivariate_normal(d.x_inj, cov, allow_singular=True).rvs(num_samples - burnin)
+    fisher_n = Fisher_samples.shape[0]
+    fisher_weights = np.full(fisher_n, 1.0 / fisher_n)
+
+    fig = corner(
+        Fisher_samples,
+        truths=x0,
+        labels=labels,
+        color='blue',
+        bins=30,
+        hist_kwargs={'density': True},
+        weights=fisher_weights,
+    )
+
+    corner(
+        pt_samples,
+        color='red',
+        fig=fig,
+        bins=30,
+        hist_kwargs={'density': True},
+        weights=pt_weights,
+    )
+
+
+    red_patch = mpatches.Patch(color='red', label='PTMCMC samples')
+    blue_patch = mpatches.Patch(color='blue', label='Fisher draws')
+    handles, labels = plt.gca().get_legend_handles_labels()
+    handles += [red_patch, blue_patch]
+    fig.legend(handles=handles, loc='upper right', fontsize=24)
+    plt.show()
+
 # ^^ Unnecessary for evidence calculations
+
 
 def avglnlikes_vs_betas(temp_ladder, lnposts, num_samples):
     '''returns average log likelihoods vs betas, for each chain, for ONE set of suppression parameters.'''

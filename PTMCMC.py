@@ -34,7 +34,7 @@ def PT_swap(num_chains,
             samples,
             lnposts,
             keys,
-            lambda15=0, lambda25=0, lambda3=0, lambda35=0):
+            _Lambda=0):
 
     # track swaps
     swap_map = list(np.copy(chain_ndx))
@@ -61,7 +61,7 @@ def PT_swap(num_chains,
 
     # record final states after all swaps
     final_states = np.array([states[swap_map_ndx] for swap_map_ndx in swap_map])
-    final_lnposts = np.array([lnpost_func(state, temp, lambda15, lambda25, lambda3, lambda35) for state, temp in zip(final_states, temp_ladder)])
+    final_lnposts = np.array([lnpost_func(state, temp, _Lambda) for state, temp in zip(final_states, temp_ladder)])
     samples[chain_ndx, iteration + 1] = final_states
     lnposts[chain_ndx, iteration + 1] = final_lnposts
     
@@ -77,7 +77,7 @@ def PTMCMC(num_samples,
            jump_proposals,
            temp_ladder,
            PT_swap_weight=20,
-           lambda15=0, lambda25=0, lambda3=0, lambda35=0,
+           _Lambda=0,
            return_acceptance_rates=False):
 
     # initialize samples and posterior values
@@ -88,7 +88,7 @@ def PTMCMC(num_samples,
 
     # all chains start at x0
     samples[:, 0] = np.tile(x0, (num_chains, 1))
-    lnposts[:, 0] = np.array([ln_posterior_func(samp, temp, lambda15, lambda25, lambda3, lambda35)
+    lnposts[:, 0] = np.array([ln_posterior_func(samp, temp, _Lambda)
                               for samp, temp in zip(samples[:, 0], temp_ladder)])
     
     # organize jump proposals
@@ -137,7 +137,7 @@ def PTMCMC(num_samples,
                     samples=samples,
                     lnposts=lnposts,
                     keys=keys,
-                    lambda15=lambda15, lambda25=lambda25, lambda3=lambda3, lambda35=lambda35)
+                    _Lambda=_Lambda)
             
         else:  # intra-chain updates
 
@@ -152,7 +152,7 @@ def PTMCMC(num_samples,
             
             # evaluate posterior at new points
             new_states = np.array(new_states)
-            new_lnposts = jnp.array([ln_posterior_func(state, temp, lambda15, lambda25, lambda3, lambda35) for state, temp in zip(new_states, temp_ladder)])
+            new_lnposts = jnp.array([ln_posterior_func(state, temp, _Lambda) for state, temp in zip(new_states, temp_ladder)])
 
             # acceptance probabilities
             accept_probs = jnp.exp(new_lnposts - lnposts[chain_ndxs, i])

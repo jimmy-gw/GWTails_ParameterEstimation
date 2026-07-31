@@ -33,12 +33,12 @@ fast_inner = jax.jit(inner)
 
 # (DEPRECATED) compute Fisher information matrix at given parameter values
 # directly evaluate (h_{,i} | h_{,j})
-def get_Fisher(x, lambda15=0, lambda25=0, lambda3=0, lambda35=0):
+def get_Fisher(x, _Lambda=0):
     Fisher = np.zeros((wg.ndim, wg.ndim))
     for i in range(wg.ndim):
-        partial_waveform1 = wg.partial_FD_waveform(x, i, lambda15, lambda25, lambda3, lambda35)
+        partial_waveform1 = wg.partial_FD_waveform(x, i, _Lambda)
         for j in range(i, wg.ndim):
-            partial_waveform2 = wg.partial_FD_waveform(x, j, lambda15, lambda25, lambda3, lambda35)
+            partial_waveform2 = wg.partial_FD_waveform(x, j, _Lambda)
             Fisher[i, j] = Fisher[j, i] = inner(partial_waveform1, partial_waveform2)
 
     #print(f'Fisher (normal):{Fisher}')
@@ -50,10 +50,10 @@ def get_Fisher(x, lambda15=0, lambda25=0, lambda3=0, lambda35=0):
 
 # compute Fisher information matrix at given parameter values
 # evaluate Fisher elements using Eq. 9 of https://arxiv.org/pdf/1007.4820
-def get_fastFisher(x, lambda15=0, lambda25=0, lambda3=0, lambda35=0):
+def get_fastFisher(x, _Lambda=0):
 
     # Define quantities that are reusable for each partial_ampphase call
-    h = wg.get_h22(x, lambda15, lambda25, lambda3, lambda35)
+    h = wg.get_h22(x, _Lambda)
     phi = h.phase
 
     # Partial derivative (via central finite differencing) helper fxn 
@@ -61,7 +61,7 @@ def get_fastFisher(x, lambda15=0, lambda25=0, lambda3=0, lambda35=0):
     def partial_ampphase(mode, x, deriv_ndx, epsilon=1e-8):
         assert mode in ['A','phi'], f"Partial must be specified to be evaluated on AmpPhaseFDWaveform.amp (\"A\") or AmpPhaseFDWaveform.phase (\"phi\")."
 
-        d_kh=wg.partial_FD_waveform(x, deriv_ndx, lambda15, lambda25, lambda3, lambda35, epsilon)
+        d_kh=wg.partial_FD_waveform(x, deriv_ndx, _Lambda, epsilon)
         if mode=='A':
             return np.real(d_kh * np.exp(-1.j * phi))
         if mode=='phi':
@@ -116,8 +116,8 @@ fast_lnprior = jax.jit(ln_prior)
 # something different than what is needed in PTMCMC. I think ultimately they
 # have to be noise weighted inner products (d-h|d-h) where d (or h? idk I'm brainfried)
 # is totally unsuppressed
-def ln_likelihood(x, temperature=1.0, lambda15=0, lambda25=0, lambda3=0, lambda35=0):
-    x_h22 = wg.get_h22(x, lambda15, lambda25, lambda3, lambda35)
+def ln_likelihood(x, temperature=1.0, _Lambda=0):
+    x_h22 = wg.get_h22(x, _Lambda)
     x_amp, x_phase = x_h22.amp, x_h22.phase
     integrand = (x_amp**2 + d.data_amp**2 - 2 * x_amp * d.data_amp * np.cos(x_phase - d.data_phase)) / S
     lnlike = -2. * np.sum(integrand) * wg.df
@@ -135,11 +135,11 @@ def loglike_untempered_unsuppressed(x):
 
 
 # posterior
-def ln_posterior(x, temperature=1.0, lambda15=0, lambda25=0, lambda3=0, lambda35=0):
+def ln_posterior(x, temperature=1.0, _Lambda=0):
     if np.any(x < wg.x_mins) or np.any(x > wg.x_maxs):
         return -np.inf
     else:
-        return ln_likelihood(x, temperature, lambda15, lambda25, lambda3, lambda35)
+        return ln_likelihood(x, temperature, _Lambda)
 
 
 

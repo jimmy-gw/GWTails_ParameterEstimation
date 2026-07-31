@@ -18,6 +18,7 @@
 # *  MA  02111-1307  USA
 # */
 
+#Euler gamma
 GAMMA = 0.577215664901532860606512090082402431
 #Dimensionless frequency (Mf) at which the inspiral phase
 #switches to the intermediate phase
@@ -28,7 +29,15 @@ AMP_fJoin_INS = 0.014
 #Minimal final spin value below which the waveform might behave pathological
 #because the ISCO frequency is too low. For more details, see the review wiki
 #page https://www.lsc-group.phys.uwm.edu/ligovirgo/cbcnote/WaveformsReview/IMRPhenomDCodeReview/PhenD_LargeNegativeSpins
+
+
+
+### vv what is this for?? ###
 MIN_FINAL_SPIN = -0.717
+#############################
+
+
+
 f_CUT = 0.2 # Dimensionless frequency (Mf) at which define the end of the waveform
 MTSUN_SI = 4.925491025543575903411922162094833998e-6 #Geometrized solar mass, s
 MSUN_SI = 1.988546954961461467461011951140572744e30 #Solar mass, kg
