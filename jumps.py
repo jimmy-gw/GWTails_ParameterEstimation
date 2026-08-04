@@ -33,7 +33,7 @@ class Fisher:
         direction = jr.choice(keys[0], state.shape[0])
         # jump along eigenvector of Fisher scaled by eigenvalue
         jump = 1. / jnp.sqrt(jnp.abs(self.vals[direction])) * self.vecs[:, direction]
-        jump *= jr.normal(keys[1]) * jnp.sqrt(temperature)
+        jump *= jr.normal(keys[1]) * jnp.sqrt(temperature)  #  /SNR ?
         return state + jump
     
     
@@ -71,3 +71,19 @@ class DifferentialEvolution:
         return new_state
 
 
+# Prior draw
+class PriorDraw:
+
+    def __init__(self):
+        # no need to initialize prior (it's represented by jr.uniform below)
+
+        # Define jump function
+        self.fast_prior_draw = jit(self.prior_draw)
+        # vectorize jump over chains
+        self.vectorized_prior_draw = jit(vmap(self.fast_prior_draw, in_axes=(0, None, 0, 0)))
+        
+    def prior_draw(self, state, iteration, temperature, key): # << need not be temp.-dependent, because hot (cold) chains will naturally sometimes accept (always reject) this jump type
+        # get, then return, random state from prior (which is a uniform dist btwn x_mins and x_maxs)
+        new_state = jr.uniform(key, minval=wg.x_mins, maxval=wg.x_maxs, shape=state.shape)
+
+        return new_state

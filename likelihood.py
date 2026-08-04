@@ -92,6 +92,10 @@ def get_correlation_matrix(fisher):
              corr[i,j] = corr[j,i] = fisher[i,j]/np.sqrt(fisher[i,i]*fisher[j,j])
     return corr
 
+# Covariance matrix
+def get_cov(fisher):
+    return np.linalg.inv(fisher)
+
 
 
 # uniform prior
@@ -114,7 +118,7 @@ fast_lnprior = jax.jit(ln_prior)
 ##################################################################################################################################################
 # Code quarantine: the integrands' dependence on data.py vars might amount to
 # something different than what is needed in PTMCMC. I think ultimately they
-# have to be noise weighted inner products (d-h|d-h) where d (or h? idk I'm brainfried)
+# have to be noise weighted inner products (d-h|d-h) where d (or maybe h? idk I'm brainfried)
 # is totally unsuppressed
 def ln_likelihood(x, temperature=1.0, _Lambda=0):
     x_h22 = wg.get_h22(x, _Lambda)
@@ -123,8 +127,10 @@ def ln_likelihood(x, temperature=1.0, _Lambda=0):
     lnlike = -2. * np.sum(integrand) * wg.df
     return lnlike / temperature
 
-def loglike_untempered_unsuppressed(x):
-    x_h22 = wg.get_h22(x)
+# cut off calculation of these log-likelihood functions at f_{IM} independently of waveform
+
+def loglike_untempered(x, _Lambda=0):
+    x_h22 = wg.get_h22(x, _Lambda)
     x_amp, x_phase = x_h22.amp, x_h22.phase
     integrand = (x_amp**2 + d.data_amp**2 - 2 * x_amp * d.data_amp * np.cos(x_phase - d.data_phase)) / S
     lnlike = -2. * np.sum(integrand) * wg.df
@@ -136,6 +142,12 @@ def loglike_untempered_unsuppressed(x):
 
 # posterior
 def ln_posterior(x, temperature=1.0, _Lambda=0):
+    if np.any(x < wg.x_mins) or np.any(x > wg.x_maxs):
+        return -np.inf
+    else:
+        return ln_likelihood(x, temperature, _Lambda)
+
+def ln_posterior_suppressed(x, temperature=1.0, _Lambda=1):
     if np.any(x < wg.x_mins) or np.any(x > wg.x_maxs):
         return -np.inf
     else:

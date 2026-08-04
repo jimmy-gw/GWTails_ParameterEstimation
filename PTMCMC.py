@@ -46,12 +46,12 @@ def PT_swap(num_chains,
     # loop through and propose a swap at each chain (starting from hottest chain and going down in T)
     # and keep track of results in swap_map
     for j, swap_chain in enumerate(reversed(range(num_chains - 1))):
-        log_acc_ratio = -lnlikes[swap_map[swap_chain]] / temp_ladder[swap_chain]
-        log_acc_ratio += -lnlikes[swap_map[swap_chain + 1]] / temp_ladder[swap_chain + 1]
-        log_acc_ratio += lnlikes[swap_map[swap_chain + 1]] / temp_ladder[swap_chain]
-        log_acc_ratio += lnlikes[swap_map[swap_chain]] / temp_ladder[swap_chain + 1]
+        log_acc_ratio = -lnlikes[swap_map[swap_chain]] / temp_ladder[swap_chain] # -\beta_0 \ln L_0
+        log_acc_ratio += -lnlikes[swap_map[swap_chain + 1]] / temp_ladder[swap_chain + 1] # -\beta_1 \ln L_1
+        log_acc_ratio += lnlikes[swap_map[swap_chain + 1]] / temp_ladder[swap_chain] # +\beta_0 \ln L_1
+        log_acc_ratio += lnlikes[swap_map[swap_chain]] / temp_ladder[swap_chain + 1] # +\beta_1 \ln L_0
         acc_ratio = np.exp(log_acc_ratio)
-        
+
         # accept or reject swap
         if jr.uniform(keys[j]) <= acc_ratio:  # accept
             swap_map[swap_chain], swap_map[swap_chain + 1] = swap_map[swap_chain + 1], swap_map[swap_chain]
@@ -80,7 +80,7 @@ def PTMCMC(num_samples,
            _Lambda=0,
            return_acceptance_rates=False):
 
-    # initialize samples and posterior values
+    # initialize samples and posterior values (and prior values?)
     ndim = x0.shape[0]
     samples = np.zeros((num_chains, num_samples, ndim))
     lnposts = np.zeros((num_chains, num_samples))
@@ -101,7 +101,8 @@ def PTMCMC(num_samples,
         jump_functions.append(jump_function)
         jump_names.append(jump_function.__name__)
         jump_weights.append(weight)
-    # add PT jump proposal (Fisher and differential evolution jumps are already added)
+
+    # add PT jump proposal (Fisher, differential evolution, and prior-draw jumps are already added)
     num_jump_types += 1
     jump_names.append('PT_swap')
     jump_weights.append(PT_swap_weight)
@@ -118,7 +119,7 @@ def PTMCMC(num_samples,
 
         # update progress ocassionally
         if i % (num_samples // 1000) == 0:
-            print(f'{round(i / num_samples * 100, 3)}%', end='\r')
+            print(f'{round(i / num_samples * 100, 4)}%', end='\r')
 
         # index of jump method
         jump_ndx = jump_selections[i]
@@ -126,7 +127,7 @@ def PTMCMC(num_samples,
         # independent random keys for chain updates
         keys = jr.split(jr.PRNGKey(i), num_chains)
 
-        if jump_ndx == num_jump_types - 1:  # parallel tempering swap (run if jump index is that of PT_swap [2])
+        if jump_ndx == num_jump_types - 1:  # parallel tempering swap (run if jump index is that of PT_swap [3])
             PT_swap(num_chains=num_chains,
                     chain_ndx=chain_ndxs,
                     temp_ladder=temp_ladder,
@@ -172,11 +173,15 @@ def PTMCMC(num_samples,
             # update acceptance / rejection counts
             jump_accept_counts[jump_ndx, chain_ndxs] += jnp.asarray(accepted, dtype=int)
             jump_reject_counts[jump_ndx, chain_ndxs] += jnp.asarray(1 - accepted, dtype=int)
-        
+    print(f'100%', end='\r')    
+
 
     # compute jump acceptance rates
     jump_reject_counts[-1, -1] += 1  # hottest chain doesn't swap with hotter chain, prevents NaN
     accept_rates = jump_accept_counts / (jump_accept_counts + jump_reject_counts)
+
+    #print(f'accept rates by chain, post PTMCMC: {accept_rates}')
+
     accept_rates_by_jump_type={}
 #    print('Jump acceptance rates')
     for name, rate in zip(jump_names, accept_rates):

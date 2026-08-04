@@ -35,7 +35,7 @@ data_FD_waveform_0 = d.data_FD_waveform
 
 
 Lambdas = np.array([0,1])
-num_iters = np.shape(Lambdas)
+num_iters = np.shape(Lambdas)[0]
 itercolors = sns.color_palette("Dark2", n_colors=num_iters)
 
 #******************************************************** ********************************************************
@@ -50,8 +50,10 @@ def PTMCMC_i(_Lambda, temp_ladder, num_samples=10000, num_chains=15, return_acce
     # jump proposals
     Fisher = j.Fisher(d.x_inj, _Lambda)
     diff_evol = j.DifferentialEvolution(len_history=100)
+    prior_draw = j.PriorDraw()
     jump_proposals = [[Fisher.vectorized_Fisher_jump, 20],
-                    [diff_evol.vectorized_DE_jump, 20]]
+                    [diff_evol.vectorized_DE_jump, 20],
+                    [prior_draw.vectorized_prior_draw, 0.91370559]] # << 1.5% chance of prior draw (given weight=20 for other 3 jump types)
 
     samples, lnposts, acc_rates = PTMCMC(num_samples=num_samples,
                                         num_chains=num_chains,
@@ -70,85 +72,9 @@ def PTMCMC_i(_Lambda, temp_ladder, num_samples=10000, num_chains=15, return_acce
 #********** Adaptive temperature ladder spacing ********* ********************************************************
 #******************************************************** ********************************************************
 
-def construct_roughTIdata(temp0, num_chains, num_samples):
-    ''' Obtains rough estimates of <lnL>(T) and \sigma(T) as functions of temperature. These are then used to compute the optimal PTMCMC temperature ladder in the iterative manner described in Rathore et al. (2004) [DOI: 10.1063/1.1831273].'''
-    ## To save computing time while constructing the temp ladder, this must only be done ONCE. Hence, this is a helper function.
-    rough_tl=temp0**(np.arange(num_chains))
-    print(r'Running PTMCMC to obtain mock <lnL>(beta) and \sigma_{lnL}(beta) curves...')
-    __, lnposts, ___ = PTMCMC_i(_Lambda=0, # keep suppression off until I know very well how my adaptive spacing algo works, reevaluate when/if it must be considered
-                                      temp_ladder=rough_tl,
-                                      num_samples=num_samples,
-                                      num_chains=len(rough_tl),
-                                      return_acceptance_rates=True)
-    print('100%', end='\r')
-    
-    rough_betas, rough_avg_lnlikes, rough_lnlikes_stdevs = avglnlikes_vs_betas(rough_tl, lnposts, num_samples)
-
-    # Akima-spline the rough avg_lnlikes and lnlikes_stdevs against betas
-    tl_akima = np.linspace(min(rough_tl), max(rough_tl), num=int(1e6))
-    betas_akima=1./tl_akima
-    avg_lnlikes_akima = Akima1DInterpolator(rough_tl, rough_avg_lnlikes, method="makima")
-    lnlikes_stdevs_akima = Akima1DInterpolator(rough_tl, rough_lnlikes_stdevs, method="makima")
-
-    # to be passed into construct_temp_ladder in order to calculate a continuous version of R-R_{tgt}=0
-    return tl_akima, avg_lnlikes_akima, lnlikes_stdevs_akima
-
-def construct_temp_ladder(akima_estimates, tl_ansatz=np.array([1.,3.5]), Tmax=1000000., counter=1):
-    '''Iterative calculation of Eq. (15) of Rathore et al. 2004 [@DOI: 10.1063/1.1831273], which returns an approximately-optimal temperature ladder such that PT swap acceptance rates in the range of 10-20%.
-    Input akima_estimates as a tuple with globally-scoped variables (tl_akima, avg_lnlikes_akima, lnlikes_stdevs_akima).
-        tl_akima: np.array (shape~1e6)
-        avg_lnlikes_akima: scipy.interpolate.Akima1DInterpolator
-        lnlikes_stdevs_akima: scipy.interpolate.Akima1DInterpolator'''
-
-    if counter==1:
-        print(f'********************* CONSTRUCTING TEMP LADDER *********************') 
-        print(f'Ansatz: {tl_ansatz}\n')
-    print(f'*** Iteration #{counter} ***')
-
-    tl_akima, avg_lnlikes_akima, lnlikes_stdevs_akima = akima_estimates
-    betas_akima = 1./tl_akima
-    lastT=tl_ansatz[-1]
-
-    # R-statistic helper function
-    def Ri(T_ip1, T_i, mu_interp, sigma_interp):
-        return (np.abs(mu_interp(T_ip1) - mu_interp(T_i)) / (sigma_interp(T_ip1) + sigma_interp(T_i)))
-
-    if counter==1:
-        print(f'First R: {Ri(tl_ansatz[1],tl_ansatz[0],avg_lnlikes_akima,lnlikes_stdevs_akima)}')
-
-    
-    # Code quarantine: stochastic chain searching is inefficient and lazy. Determine approximate root of Ri(nextT,lastT)-1 using a more deterministic method
-    ##########################################################################
-    # make a loop that adaptively guesses nextT values until the R value falls between 0.9 and 1.1, then move on to the next iteration
-    # Start w/ R<<1 and work upwards
-    nextT=lastT*1.01
-    R_adapt=Ri(nextT, lastT, avg_lnlikes_akima, lnlikes_stdevs_akima)
-    while R_adapt<0.95 or R_adapt>1.05:
-        assert nextT>lastT, "Temperature ladder must be strictly increasing."
-        if R_adapt<0.95:
-            nextT+=nextT*np.random.uniform(0.1,0.3) # increase temperature guess by as little as 10% or as much as 30%
-        if R_adapt>1.05:
-            nextT-=nextT*np.random.uniform(0.01,0.2) # decrease temperature guess by as little as 1% or as much as 20%
-        R_adapt=Ri(nextT,lastT,avg_lnlikes_akima,lnlikes_stdevs_akima) 
-    ##########################################################################
-
-    # Use reddemcee? https://reddemcee.readthedocs.io/
-
-    tl_ansatz=np.append(tl_ansatz, nextT)
-
-    # Rinse+repeat until the last rung of the ladder is in excess of Tmax
-    print(f'Next temperature after {lastT}: {nextT}.\nNext R: {Ri(nextT, lastT, avg_lnlikes_akima, lnlikes_stdevs_akima)}\n')
-    if nextT>=Tmax:
-        print(f'****************##### Temperature ladder constructed successfully in {counter} iterations #####****************\n')
-        print(f'Result: temp_ladder={tl_ansatz}')
-        nc=len(tl_ansatz)
-        print(f'Length: {nc} chains')
-        return tl_ansatz
-    else:
-        return construct_temp_ladder(akima_estimates, tl_ansatz, Tmax, counter=counter+1)
 
 
-
+# threw all my old stochastic adaptation stuff into the junkyard -_-
 
 
 
@@ -202,7 +128,7 @@ def construct_te_dattab(betas, lnlikes):
 
 
 #******************************************************** ********************************************************
-#******************* Helper functions ******************* ***************** (Plotting functions) *****************
+#******************* Helper functions ******************* ****************** Plotting functions ******************
 #******************************************************** ********************************************************
 
 
@@ -213,8 +139,9 @@ class PTSamples:
         self._Lambda=_Lambda
 
         # Dependent quantities
-        self.Ms=self.get_Ms(self.samples)          # shape: (num_chains, num_samples)
+        self.Ms=self.get_Ms(self.samples)                            # shape: (num_chains, num_samples)
         self.fIMs=IMRPhenomD.IMRPhenomD_const.PHI_fJoin_INS/self.Ms  # shape: (num_chains, num_samples)
+        self.thSNRs=self.get_thSNRs(self.samples)
         # Chirp mass?
         # Spin variables s_l, sigma_l, \chi_s, \chi_a?
 
@@ -227,8 +154,39 @@ class PTSamples:
 
     def get_DQsamples(self):
         '''Returns samples of dependent quantities (DQs) with shape (num_chains, num_samples, {num_DQs}).'''
-        return self.Ms, self.fIMs
+        return self.Ms, self.fIMs, self.thSNRs
 
+    def get_thSNRs(self, samps):
+        '''Returns theoretical SNR (h|h).'''
+
+
+        # Sanity check on computing time
+        print('Computing SNRs...')
+
+
+
+        # samps: (num_chains, num_samples, n_dim)
+        num_chains, num_samples, ndim = samps.shape
+
+        # flatten to one parameter vector per row
+        x_flat = samps.reshape(-1, ndim) # (num_chains*num_samples, ndim)
+
+        # map FD_waveform over every parameter vector
+        h_flat = np.array([wg.FD_waveform(x, self._Lambda) for x in x_flat])
+
+        # reshape back to (num_chains, num_samples, Nf)
+        h_stack = h_flat.reshape(num_chains, num_samples, -1)
+
+        # compute (h|h) per sample
+        snr = np.array([l.fast_inner(h, h) for h in h_stack.reshape(-1, h_stack.shape[-1])])
+
+
+        # Sanity check on computing time
+        print('Computing SNRs...')
+
+
+
+        return snr.reshape(num_chains, num_samples)
 
 
 # vv Unnecessary for evidence calculations
