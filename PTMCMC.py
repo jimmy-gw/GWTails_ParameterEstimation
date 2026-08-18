@@ -65,8 +65,6 @@ def PT_swap(num_chains,
     samples[chain_ndx, iteration + 1] = final_states
     lnposts[chain_ndx, iteration + 1] = final_lnposts
     
-    # 6/9/26 - Want 10-20% acceptance rate with given temperature ladder
-
     return
 
 
@@ -144,9 +142,9 @@ def PTMCMC(num_samples,
 
             # which jump proposal method
             vectorized_jump_function = jump_functions[jump_ndx]
-            
+
             # propose jumps
-            new_states = vectorized_jump_function(samples[chain_ndxs, i],
+            new_states = vectorized_jump_function(samples[chain_ndxs, i], 
                                                   i,
                                                   temp_ladder,
                                                   keys)
@@ -186,7 +184,7 @@ def PTMCMC(num_samples,
 #    print('Jump acceptance rates')
     for name, rate in zip(jump_names, accept_rates):
         accept_rates_by_jump_type[name]=rate
-#        print(f'{name}: {rate}')
+        print(f'{name}: {rate}')
 
     # Count acceptances and rejects (for funsies)
 #    for accepts, rejects in zip(jump_accept_counts[2], jump_reject_counts[2]):

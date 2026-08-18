@@ -11,13 +11,14 @@ import likelihood as l
 import seaborn as sns
 from scipy import special
 from scipy.interpolate import Akima1DInterpolator
-import IMRPhenomD.IMRPhenomD_const
+import IMRPhenomD.IMRPhenomD_const as imrc
 
 # corner plot helper packages
 import matplotlib.patches as mpatches
 from corner import corner
 from scipy.stats import multivariate_normal
 
+from jax import jit, vmap
 
 #from numba import jit
 
@@ -44,16 +45,17 @@ itercolors = sns.color_palette("Dark2", n_colors=num_iters)
 
 
 # do PTMCMC!
-def PTMCMC_i(_Lambda, temp_ladder, num_samples=10000, num_chains=15, return_acceptance_rates=True):
+def PTMCMC_i(_Lambda, temp_ladder, num_samples, num_chains, return_acceptance_rates=True):
     '''Run PTMCMC for given lambda values, taken from the loop over the zipped lambda lists.'''
 
     # jump proposals
     Fisher = j.Fisher(d.x_inj, _Lambda)
+
     diff_evol = j.DifferentialEvolution(len_history=100)
     prior_draw = j.PriorDraw()
     jump_proposals = [[Fisher.vectorized_Fisher_jump, 20],
                     [diff_evol.vectorized_DE_jump, 20],
-                    [prior_draw.vectorized_prior_draw, 0.91370559]] # << 1.5% chance of prior draw (given weight=20 for other 3 jump types)
+                    [prior_draw.vectorized_prior_draw, 0.30456853]] # << 0.5% chance of prior draw (given weight=20 for other 3 jump types)
 
     samples, lnposts, acc_rates = PTMCMC(num_samples=num_samples,
                                         num_chains=num_chains,
@@ -72,11 +74,157 @@ def PTMCMC_i(_Lambda, temp_ladder, num_samples=10000, num_chains=15, return_acce
 #********** Adaptive temperature ladder spacing ********* ********************************************************
 #******************************************************** ********************************************************
 
+class TempLadder:
+
+    def init(self, temps):
+        self.temps = temps
+        self.betas = 1./temps
+        self.etas = self.set_etas(temps)
+        # self.Cvs = # setter function <- depends on lnlikes/stdevs, which is more of a PTSamples thing
+        self.gammas = self.set_gammas()
+
+    # Chain density \eta
+    def set_etas(self, temp_ladder):
+        '''Returns the density of chains eta=\frac{1}{\ln\gamma}, where \gamma is the ratio \frac{T_{i+1}}{T_i}, vs temperature.
+            Because \gamma does not exist for Tmax, the last value for eta defaults to 0 (corresponding to T_{i+1}=\infty).'''
+    
+        etas = np.zeros(shape=temp_ladder.shape[0])
+        etas[-1]=0
+    
+        for i in range(temp_ladder.shape[0]-1):
+            j = i+1
+            Ti, Tj = temp_ladder[i], temp_ladder[j]
+            etas[i] = 1. / np.log10(Tj/Ti)
+    
+        # Normalize by appending a factor of num_chains / ( \int_0^{\log_{10}T_{max}}\eta d(\log_{10}T)) to etas
+        logTs = np.log10(temp_ladder)
+        Nc = temp_ladder.shape[0]
+        integral = np.trapezoid(etas, logTs, dx=0.1)
+        etas = (Nc/integral) * etas
+    
+        return etas
+
+    def get_etas(self):
+        return self.etas
+
+    # Chain spacings \gamma
+    def set_gammas(self):
+        return 10**(1./self.etas)
+
+    def get_gammas(self):
+        return self.gammas
+
+    # # Residual between eta and sqrtCv
+    # def eta_Cv_residuals(self, etas, Cvs):
+    #     return etas-Cvs
+
+    # Conversion functions
+    def etas_to_gammas(etas):  # missing the "self" argument on purpose so later I can see if it's necessary or not (i.e. if it brings up errors or if everytingn's fine)
+        gammas = 10**(1./etas)
+        return gammas
+
+    def gammas_to_etas(self, gammas):
+        etas = 1/np.log10(gammas)
+        return etas
+
+    def gammas_to_temps(self, gammas):
+        temp_ladder = [1]
+        for gamma in gammas:
+            temp_ladder.append(temp_ladder[-1]*gamma)
+        return np.array(temp_ladder)
+
+    def temps_to_gammas(self, temp_ladder):
+        gammas = np.zeros(temp_ladder.shape[0]-1) # Tmax has no associated gamma value
+        for i in range(temp_ladder.shape[0]-1):
+            j = i+1
+            Ti, Tj = temp_ladder[i], temp_ladder[j]
+            gammas[i] = Tj/Ti
+        return gammas
+
+    def convert_tempsbetas(self, TB):
+        '''convert temps (betas) to betas (temps)'''
+        return 1./TB 
 
 
-# threw all my old stochastic adaptation stuff into the junkyard -_-
 
 
+# Discrete method for calculating specific heats
+def Cv(Ts, dlnLs):
+    '''returns specific heat C_v=-\frac{\del\ln\mathcal{L}}{\del T}=\beta^2Var(\ln\mathcal{L})
+    NOTE peaks in C_v correspond to phase transitions, where the temperature ladder should naturally bunch up.
+    '''
+    Cvs=(1./Ts**2)*dlnLs**2
+    return Cvs
+
+# Continuous (splining) method for calculating specific heats
+def Cv_spl_func(Ts, lnLs):
+    '''returns an interpolatOR for specific heat C_v=-\frac{\del\ln\mathcal{L}}{\del T}} by splining and differentating -\ln L(T).'''
+    spliner = Akima1DInterpolator(Ts, -lnLs, method='makima') # interp, -lnLs so that Cv picks up the necessary minus sign
+    return spliner.derivative()
+
+def Cv_spl(Ts, lnLs):
+    '''returns interpolatED specific heat C_v=-\frac{\del\ln\mathcal{L}}{\del T}}'''
+    deriv = Cv_spl_func(Ts, lnLs)
+
+    Ts_spl = np.geomspace(Ts[0],Ts[-1], 100)
+    Cvs_spl = deriv(Ts_spl) # minus sign already carried through
+    return Ts_spl, Cvs_spl
+
+# Chain density helper
+def chaindens_vs_temps(temp_ladder):
+    '''Returns the density of chains eta=\frac{1}{\ln\gamma}, where \gamma is the ratio \frac{T_{i+1}}{T_i}, vs temperature.
+    Because \gamma does not exist for Tmax, the last value for eta defaults to 0 (corresponding to T_{i+1}=\infty).'''
+
+    etas = np.zeros(shape=temp_ladder.shape[0])
+    etas[-1]=0
+
+    for i in range(temp_ladder.shape[0]-1):
+        j = i+1
+        Ti, Tj = temp_ladder[i], temp_ladder[j]
+        etas[i] = 1. / np.log10(Tj/Ti)
+
+    # Normalize so that integral of etas is num_chains
+
+    return etas
+
+# Helper to derive chain structure from root specific heat
+def Cvs_to_gammas(Cv_func: Akima1DInterpolator, num_chains: int):
+    '''Using a spline-interpolated function of arbitrary temperature for root specific heat \sqrt{C_V},
+      derive the ladder spacings gamma_i between chain i and i+1:
+    Steps:
+        1. Cv_func (an Akima1DInterpolator object) is assumed to represent the ladder density, eta=1/\log_{10}\gamma
+        2. In accordance with the above step, iteratively construct a list of etas based on sqrtCv(T), starting with eta(T=1)
+        3. Enforce normalization condition that \int_1^{\log T_{max}}\eta d(\log T) = N_c = (num_chains)'''
+    # Initialize etas, logTs
+    etas=np.zeros(num_chains) # Recall that eta(T_max) is undefined
+    logTs=np.zeros(num_chains)
+
+    # Initialize first eta, first 2 temps (1 and gamma_1)
+    etas[0] = np.sqrt(Cv_func(1)) # 1, as in T_0=1
+    T_i = 10**(1/etas[0]) # 10^{1/\eta}=\gamma,
+    logTs[0], logTs[1] = 0, np.log10(T_i)
+
+    # Iteratively construct etas list off of the first 2 temps
+    for i in range(1,num_chains-1):
+        etas[i] = np.sqrt(Cv_func(T_i))
+        T_ip1 = T_i * 10**(1 / etas[i])
+        logTs[i+1] = np.log10(T_ip1)
+        T_i = T_ip1
+
+    print(f'logTs={logTs}')
+    print(f'10**logTs={10.**logTs}')
+
+    # Normalize by appending a factor of num_chains / ( \int_0^{\log_{10}T_{max}}\eta d(\log_{10}T)) to etas
+    integral = np.trapezoid(etas, logTs, dx=0.1)
+    etas = (num_chains/integral) * etas
+
+    # Sanity check
+    print(f'integral={integral}, Nc={num_chains}')
+
+    # Calculate gammas to be used in constructing temperature ladder
+    return 10**(1./etas)
+
+        
 
 #******************************************************** ********************************************************
 #*********************** Evidence *********************** ********************************************************
@@ -108,7 +256,7 @@ def lnlikes(temp_ladder, lnposts, num_samples):
     '''returns log likelihoods for each chain, for ONE set of suppression parameters.'''
     burnin = num_samples // 5
     lnlikes = np.array(lnposts[:, burnin:]) * temp_ladder[:,None] # lnposts is not collapsed along axis=1 as it is when taking mean or std, hence the [:,None]
-    return np.transpose(lnlikes)
+    return np.transpose(lnlikes) # <- what's up with this?
 
 def construct_te_dattab(betas, lnlikes):
     '''Creates a 2D np.array object akin to logLchain.dat, and saves it as a .dat file to be read by thermo_error.py.
@@ -139,9 +287,12 @@ class PTSamples:
         self._Lambda=_Lambda
 
         # Dependent quantities
-        self.Ms=self.get_Ms(self.samples)                            # shape: (num_chains, num_samples)
-        self.fIMs=IMRPhenomD.IMRPhenomD_const.PHI_fJoin_INS/self.Ms  # shape: (num_chains, num_samples)
-        self.thSNRs=self.get_thSNRs(self.samples)
+        self.Ms=self.get_Ms(self.samples)                     # shape: (num_chains, num_samples)
+        self.fIMs=imrc.PHI_fJoin_INS/(self.Ms*imrc.MTSUN_SI)  # shape: (num_chains, num_samples)
+        self.thSNR=self.get_thSNR()                          # shape: (num_chains, num_samples)
+
+        # Fast thSNRs getter (jit)?
+
         # Chirp mass?
         # Spin variables s_l, sigma_l, \chi_s, \chi_a?
 
@@ -154,43 +305,34 @@ class PTSamples:
 
     def get_DQsamples(self):
         '''Returns samples of dependent quantities (DQs) with shape (num_chains, num_samples, {num_DQs}).'''
-        return self.Ms, self.fIMs, self.thSNRs
+        return self.Ms, self.fIMs, self.thSNR
 
-    def get_thSNRs(self, samps):
-        '''Returns theoretical SNR (h|h).'''
+    def get_thSNR(self):
+        '''Returns theoretical SNR (h|h), where h=h(x_inj).'''
+        h = wg.FD_waveform(d.x_inj, self._Lambda) # theoretical SNR need only be computed for the exact injected waveform
+        snr = np.sqrt(l.fast_inner(h, h))
 
+        # Sanity check tempered SNRs? ########
+        # Routine is here jic I need it
+        # for T in np.geomspace(1,1.e6,20):
+        #     print(f'SNR/np.sqrt({T}) = {snr/np.sqrt(T)}')
+        ##################################################
 
-        # Sanity check on computing time
-        print('Computing SNRs...')
+        # Sanity check also SNRs for different log distances #
+        # This routine has been checked and I have useful bounds on logDL based on the range of SNRs they produce
+        # logd_inj = d.x_inj[4]
+        # print(f'Original injected log distance = {logd_inj}')
+        # for logd in np.linspace(logd_inj-1,logd_inj+3,20):
+        #     x = np.concatenate( (d.x_inj[:4], np.array([logd]), d.x_inj[5:]) )
+        #     H = wg.FD_waveform(x, self._Lambda)
+        #     SNR = np.sqrt(l.fast_inner(H, H))
+        #     print(f'SNR(logDL={logd}) = {SNR}')
+        ######################################################
 
-
-
-        # samps: (num_chains, num_samples, n_dim)
-        num_chains, num_samples, ndim = samps.shape
-
-        # flatten to one parameter vector per row
-        x_flat = samps.reshape(-1, ndim) # (num_chains*num_samples, ndim)
-
-        # map FD_waveform over every parameter vector
-        h_flat = np.array([wg.FD_waveform(x, self._Lambda) for x in x_flat])
-
-        # reshape back to (num_chains, num_samples, Nf)
-        h_stack = h_flat.reshape(num_chains, num_samples, -1)
-
-        # compute (h|h) per sample
-        snr = np.array([l.fast_inner(h, h) for h in h_stack.reshape(-1, h_stack.shape[-1])])
-
-
-        # Sanity check on computing time
-        print('Computing SNRs...')
-
-
-
-        return snr.reshape(num_chains, num_samples)
-
+        return snr
 
 # vv Unnecessary for evidence calculations
-def phasediff_vs_freq(lambda1=0, lambda2=[d._Lambda]):
+def phasediff_vs_freq(lambda1, lambda2, ax:plt.Axes):
     '''Calculate and plot (as a fxn of frequency) the phase difference \Psi_2-\Psi1 between two waveforms h22_2 and h22_1, 
     with the same injected parameters but differing degrees of suppression. Suppression for each waveform is controlled 
     through lambdas1 and lambdas2, each a list of lambda15 thru lambda35.'''
@@ -198,14 +340,12 @@ def phasediff_vs_freq(lambda1=0, lambda2=[d._Lambda]):
     h22_2 = wg.get_h22(d.x_inj, lambda2)
     delta_psi = h22_2.phase - h22_1.phase
     
-    plt.plot(wg.f,delta_psi)
-    plt.xlabel('frequency [Hz]')
-    plt.ylabel(r'$\Delta\Psi(f)=\Psi_{2}(f)-\Psi_{1}(f)$')
-    plt.title(rf'$\lambda_1$={lambda1}, $\lambda_2$={lambda2}')
-    plt.show()
+    ax.plot(wg.f,delta_psi, color='r')
+    ax.set_xlabel('frequency [Hz]')
+    ax.set_ylabel(r'$\Delta\Psi(f)=\Psi_{2}(f)-\Psi_{1}(f)$')
+    ax.set_title(rf'$\lambda_1$={lambda1}, $\lambda_2$={lambda2}')
 
-
-def chain_heatmap(temp_ladder, lnposts, num_chains):
+def chain_heatmap(temp_ladder, lnposts, num_chains, ax:plt.Axes):
     '''Plots likelihood values of chains (without temperature scaling).
         temp_ladder: An output of PTMCMC().
         lnposts: An output of PTMCMC().
@@ -213,24 +353,22 @@ def chain_heatmap(temp_ladder, lnposts, num_chains):
     chain_colors = list(reversed([plt.cm.plasma(i / num_chains) for i in range(1, num_chains + 1)]))
 
     for j, (temp, color) in enumerate(zip(temp_ladder[::-1], chain_colors)):
-        plt.plot(lnposts[::-1][j] * temp, color=color, label=f'T = {round(temp, 3)}')
-    plt.title('PTMCMC lambda=[nothinghereasofyet]') # figure out how to include toggle parameter values in title
-    plt.xlabel('MCMC iteration')
-    plt.ylabel('log(likelihood)')
-    plt.legend(loc='lower right')
-    plt.show()
+        ax.plot(lnposts[::-1][j] * temp, color=color, label=f'T = {round(temp, 3)}')
+    ax.set_title('PTMCMC lambda=[nothinghereasofyet]') # figure out how to include toggle parameter values in title
+    ax.set_xlabel('MCMC iteration')
+    ax.set_ylabel(r'log\mathcal{L}')
+    ax.legend(loc='lower right')
 
-def trace_temp1chain(samples):
+def trace_temp1chain(samples, _Lambda, ax:plt.Axes):
     '''Creates a trace plot for T = 1 chain.
         samples: An output of PTMCMC().'''
+    linestyles={0: 'solid', 1: 'dashed'}
     for i in range(wg.ndim):
-        plt.plot(samples[0,:,i], color=f'C{i}', alpha=0.6)
-        plt.axhline(d.x_inj[i], color=f'C{i}', alpha=0.8, label=wg.x_labels[i])
-    plt.title('PTMCMC lambda=[alsonothinghereasofyet]') # figure out how to include toggle parameter values in title
-    plt.xlabel('MCMC iteration')
-    plt.ylabel('parameter value')
-    plt.legend(loc='lower right')
-    plt.show()
+        ax.plot(samples[0,:,i], color=f'C{i+int(wg.ndim * _Lambda / 2)}', alpha=0.3)
+        ax.axhline(d.x_inj[i],  color=f'C{i+int(wg.ndim * _Lambda / 2)}', alpha=0.9, label=wg.x_labels[i]+rf', $\lambda=${_Lambda}', linestyle=linestyles[_Lambda])
+    ax.set_xlabel('MCMC iteration', fontsize=14)
+    ax.set_ylabel('parameter value', fontsize=14)
+    ax.legend(loc='lower right')
 
 def cornerplots(samples, _Lambda=0):
     '''Creates corner plots displaying the results of PTMCMC sampling, as well as Fisher samples.'''
@@ -292,6 +430,15 @@ def avglnlikes_vs_betas(temp_ladder, lnposts, num_samples):
     betas = 1. / temp_ladder
 
     return betas, avg_lnlikes, lnlikes_stdevs
+
+def avglnlikes_vs_temps(temp_ladder, lnposts, num_samples):
+    '''returns average log likelihoods vs temperature, for each chain, for ONE set of suppression parameters.'''
+    burnin = num_samples // 5
+    avg_lnlikes = np.mean(lnposts[:, burnin:], axis=1) * temp_ladder # these hold 80% of all num_samples lnlikes
+    lnlikes_stdevs = np.std(lnposts[:, burnin:], axis=1) * temp_ladder # ^^
+
+    return temp_ladder, avg_lnlikes, lnlikes_stdevs
+
 
 def alpha_overlap(avg_lnlike_1, lnlikes_stdev_1, avg_lnlike_2, lnlikes_stdev_2, order=1):
     '''Calculates overlap factor alpha according to Eq. (12) of Rathmore et al. 2004 [DOI: 10.1063/1.1831273].

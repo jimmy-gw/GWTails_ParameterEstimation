@@ -20,6 +20,7 @@ class Fisher:
         # store initial Fisher
         self.Fisher = self.get_Fisher_func(self.x0, _Lambda)
         self.vals, self.vecs = jnp.linalg.eigh(self.Fisher)
+        self.cond_num = jnp.linalg.cond(self.Fisher)
 
         # vectorize Fisher jump across chains
         self.fast_Fisher_jump = jit(self.Fisher_jump)
@@ -82,8 +83,8 @@ class PriorDraw:
         # vectorize jump over chains
         self.vectorized_prior_draw = jit(vmap(self.fast_prior_draw, in_axes=(0, None, 0, 0)))
         
-    def prior_draw(self, state, iteration, temperature, key): # << need not be temp.-dependent, because hot (cold) chains will naturally sometimes accept (always reject) this jump type
-        # get, then return, random state from prior (which is a uniform dist btwn x_mins and x_maxs)
+    def prior_draw(self, state, iteration, temperature, key): 
+        # Needs not be temperature-dependent, because hot (cold) chains will naturally sometimes accept (always reject) this jump type according to chain swap Hastings ratio
+        # get, then return, random state from prior (which is just a uniform dist btwn x_mins and x_maxs)
         new_state = jr.uniform(key, minval=wg.x_mins, maxval=wg.x_maxs, shape=state.shape)
-
         return new_state
