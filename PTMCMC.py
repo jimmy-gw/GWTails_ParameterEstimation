@@ -91,16 +91,21 @@ def PTMCMC(num_samples,
     
     # organize jump proposals
     num_jump_types = len(jump_proposals)
+    jump_classes = []
     jump_functions = []
     jump_names = []
     jump_weights = []
+    jump_histories = []
     for proposal in jump_proposals:
-        jump_function, weight = proposal
+        jumpclass, jump_function, weight = proposal
+        jump_history = jumpclass.history
+        jump_classes.append(jumpclass)
         jump_functions.append(jump_function)
         jump_names.append(jump_function.__name__)
         jump_weights.append(weight)
+        jump_histories.append(jump_history)
 
-    # add PT jump proposal (Fisher, differential evolution, and prior-draw jumps are already added)
+    # add PT jump proposal (Fisher, differential evolution, and prior-draw jumps are already added, in that order)
     num_jump_types += 1
     jump_names.append('PT_swap')
     jump_weights.append(PT_swap_weight)
@@ -110,7 +115,7 @@ def PTMCMC(num_samples,
 
     # track jump proposal accept and reject counts
     jump_accept_counts = np.zeros((num_jump_types, num_chains))
-    jump_reject_counts = np.zeros((num_jump_types, num_chains)) # print accepts/(accepts+rejects)
+    jump_reject_counts = np.zeros((num_jump_types, num_chains))
 
     # main MCMC loop
     for i in range(num_samples - 1):
@@ -142,12 +147,15 @@ def PTMCMC(num_samples,
 
             # which jump proposal method
             vectorized_jump_function = jump_functions[jump_ndx]
+            jump_class = jump_classes[jump_ndx]
+            history = jump_histories[jump_ndx]
 
             # propose jumps
             new_states = vectorized_jump_function(samples[chain_ndxs, i], 
                                                   i,
                                                   temp_ladder,
-                                                  keys)
+                                                  keys,
+                                                  history)
             
             # evaluate posterior at new points
             new_states = np.array(new_states)
@@ -163,6 +171,13 @@ def PTMCMC(num_samples,
                                                                              samples[chain_ndxs, i],
                                                                              lnposts[chain_ndxs, i],
                                                                              keys)
+
+            # update DE history
+            if jump_ndx == 1: # if DE jump
+                accepted_states = jnp.asarray(final_states)
+                for state in accepted_states:
+                    replacement = np.random.randint(jump_class.len_history) # np.random or jr?
+                    jump_class.history = jump_class.history.at[replacement].set(state) 
 
             # convert updates to numpy arrays
             samples[chain_ndxs, i + 1] = jnp.asarray(final_states)

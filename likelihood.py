@@ -31,22 +31,20 @@ def inner(a, b):
 fast_inner = jax.jit(inner)
 
 
-# (DEPRECATED) compute Fisher information matrix at given parameter values
+# compute Fisher information matrix at given parameter values
 # directly evaluate (h_{,i} | h_{,j})
-def get_Fisher(x, _Lambda=0):
+def get_Fisher(x, _Lambda=0, epsilon=3.e-8):
     Fisher = np.zeros((wg.ndim, wg.ndim))
     for i in range(wg.ndim):
-        partial_waveform1 = wg.partial_FD_waveform(x, i, _Lambda)
+        partial_waveform1 = wg.partial_FD_waveform(x, i, _Lambda, epsilon)
         for j in range(i, wg.ndim):
-            partial_waveform2 = wg.partial_FD_waveform(x, j, _Lambda)
+            partial_waveform2 = wg.partial_FD_waveform(x, j, _Lambda, epsilon)
             Fisher[i, j] = Fisher[j, i] = inner(partial_waveform1, partial_waveform2)
 
     return Fisher
 
-
-# compute Fisher information matrix at given parameter values
 # evaluate Fisher elements using Eq. 9 of https://arxiv.org/pdf/1007.4820
-def get_fastFisher(x, _Lambda=0):
+def get_fastFisher(x, _Lambda=0, epsilon=3.e-8):
 
     # Define quantities that are reusable for each partial_ampphase call
     h = wg.get_h22(x, _Lambda)
@@ -54,10 +52,10 @@ def get_fastFisher(x, _Lambda=0):
 
     # Partial derivative (via central finite differencing) helper fxn 
     # (used for Fisher evaluation below)
-    def partial_ampphase(mode, x, deriv_ndx, epsilon=1e-6):
+    def partial_ampphase(mode, x, deriv_ndx, e):
         assert mode in ['A','phi'], f"Partial must be specified to be evaluated on AmpPhaseFDWaveform.amp (\"A\") or AmpPhaseFDWaveform.phase (\"phi\")."
 
-        d_kh=wg.partial_FD_waveform(x, deriv_ndx, _Lambda, epsilon)
+        d_kh=wg.partial_FD_waveform(x, deriv_ndx, _Lambda, e)
         if mode=='A':
             return np.real(d_kh * np.exp(-1.j * phi))
         if mode=='phi':
@@ -65,9 +63,9 @@ def get_fastFisher(x, _Lambda=0):
 
     Fisher = np.zeros((wg.ndim, wg.ndim))
     for i in range(wg.ndim):
-        d_iA, Ad_iphi = partial_ampphase('A',x,i), partial_ampphase('phi',x,i)
+        d_iA, Ad_iphi = partial_ampphase('A',x,i, epsilon), partial_ampphase('phi',x,i, epsilon)
         for j in range(i,wg.ndim):
-            d_jA, Ad_jphi = partial_ampphase('A',x,j), partial_ampphase('phi',x,j)
+            d_jA, Ad_jphi = partial_ampphase('A',x,j, epsilon), partial_ampphase('phi',x,j, epsilon)
             # discrete integration
             integrand = (d_iA * d_jA + Ad_iphi * Ad_jphi) / S
             Fisher[i,j] = Fisher[j,i] = 4. * np.sum(integrand) * wg.df
@@ -113,14 +111,19 @@ x0_h22_0 = wg.get_h22(d.x_inj, _Lambda=0)
 x0_h22_1 = wg.get_h22(d.x_inj, _Lambda=1)
 dataByLambda={0: x0_h22_0, 1:x0_h22_1}
 
-def ln_likelihood(x, temperature=1.0, _Lambda=0):
+def ln_likelihood(x, temperature=1.0, _Lambda=0, prior_recovery_test=False): # <- switch btwn True/False to toggle prior recover test
+    # Run sampler w/ const. likelihood and view corner plot to test for prior recovery
+    if prior_recovery_test:
+        print(rf'lnlike shape {x0_h22_0.phase.shape[0]}')
+        return np.full(x0_h22_0.phase.shape[0], -1)
+
     x_h22 = wg.get_h22(x, _Lambda)
     x0_h22 = dataByLambda[_Lambda]
 
     x0_amp, x0_phase = x0_h22.amp, x0_h22.phase
     x_amp, x_phase = x_h22.amp, x_h22.phase
 
-    integrand = (x_amp**2 + x0_amp**2 - 2 * x_amp * x0_amp * np.cos(x_phase - x0_phase)) / S # < Model mismatch fixed 8/12/26 :D))
+    integrand = (x_amp**2 + x0_amp**2 - 2 * x_amp * x0_amp * np.cos(x_phase - x0_phase)) / S # < Model mismatch fixed 8/12/26 :D
     lnlike = -2. * np.sum(integrand) * wg.df
     return lnlike / temperature
 

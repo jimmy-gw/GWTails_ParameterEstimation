@@ -18,9 +18,8 @@ import matplotlib.patches as mpatches
 from corner import corner
 from scipy.stats import multivariate_normal
 
-from jax import jit, vmap
-
-#from numba import jit
+# from jax import jit, vmap
+# from numba import jit
 
 
 #******************************************************** ********************************************************
@@ -53,9 +52,11 @@ def PTMCMC_i(_Lambda, temp_ladder, num_samples, num_chains, return_acceptance_ra
 
     diff_evol = j.DifferentialEvolution(len_history=100)
     prior_draw = j.PriorDraw()
-    jump_proposals = [[Fisher.vectorized_Fisher_jump, 20],
-                    [diff_evol.vectorized_DE_jump, 20],
-                    [prior_draw.vectorized_prior_draw, 0.30456853]] # << 0.5% chance of prior draw (given weight=20 for other 3 jump types)
+
+    # maybe rewrite these lists as [class, vectorized jump, weight], and edit PTMCMC() accordingly?
+    jump_proposals = [[Fisher, Fisher.vectorized_Fisher_jump, 20],
+                    [diff_evol, diff_evol.vectorized_DE_jump, 20],
+                    [prior_draw, prior_draw.vectorized_prior_draw, 0.30456853]] # << 0.5% chance of prior draw (given weight=20 for other 3 jump types)
 
     samples, lnposts, acc_rates = PTMCMC(num_samples=num_samples,
                                         num_chains=num_chains,
@@ -354,9 +355,8 @@ def chain_heatmap(temp_ladder, lnposts, num_chains, ax:plt.Axes):
 
     for j, (temp, color) in enumerate(zip(temp_ladder[::-1], chain_colors)):
         ax.plot(lnposts[::-1][j] * temp, color=color, label=f'T = {round(temp, 3)}')
-    ax.set_title('PTMCMC lambda=[nothinghereasofyet]') # figure out how to include toggle parameter values in title
     ax.set_xlabel('MCMC iteration')
-    ax.set_ylabel(r'log\mathcal{L}')
+    ax.set_ylabel(r'$log\mathcal{L}$')
     ax.legend(loc='lower right')
 
 def trace_temp1chain(samples, _Lambda, ax:plt.Axes):
