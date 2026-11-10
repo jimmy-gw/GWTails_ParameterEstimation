@@ -13,13 +13,13 @@ import likelihood as l
 # Fisher jumps
 class Fisher:
 
-    def __init__(self, x0, _Lambda):
+    def __init__(self, x0, _Alpha5Ln,_Alpha6Ln):
         self.x0 = x0  # initial state where to compute Fisher
         self.get_Fisher_func = l.get_Fisher  # function to get Fisher (fast: Cornish 2013 https://arxiv.org/pdf/1007.4820)
         self.history = None # no adaptive history
 
         # store initial Fisher
-        self.Fisher = self.get_Fisher_func(self.x0, _Lambda)
+        self.Fisher = self.get_Fisher_func(self.x0, _Alpha5Ln,_Alpha6Ln)
         self.vals, self.vecs = jnp.linalg.eigh(self.Fisher)
         self.cond_num = jnp.linalg.cond(self.Fisher)
 

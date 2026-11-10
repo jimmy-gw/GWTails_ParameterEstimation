@@ -33,21 +33,21 @@ fast_inner = jax.jit(inner)
 
 # compute Fisher information matrix at given parameter values
 # directly evaluate (h_{,i} | h_{,j})
-def get_Fisher(x, _Lambda=0, epsilon=3.e-8):
+def get_Fisher(x, _Alpha5Ln=1,_Alpha6Ln=1, epsilon=3.e-8):
     Fisher = np.zeros((wg.ndim, wg.ndim))
     for i in range(wg.ndim):
-        partial_waveform1 = wg.partial_FD_waveform(x, i, _Lambda, epsilon)
+        partial_waveform1 = wg.partial_FD_waveform(x, i, _Alpha5Ln,_Alpha6Ln, epsilon)
         for j in range(i, wg.ndim):
-            partial_waveform2 = wg.partial_FD_waveform(x, j, _Lambda, epsilon)
+            partial_waveform2 = wg.partial_FD_waveform(x, j, _Alpha5Ln,_Alpha6Ln, epsilon)
             Fisher[i, j] = Fisher[j, i] = inner(partial_waveform1, partial_waveform2)
 
     return Fisher
 
 # evaluate Fisher elements using Eq. 9 of https://arxiv.org/pdf/1007.4820
-def get_fastFisher(x, _Lambda=0, epsilon=3.e-8):
+def get_fastFisher(x, _Alpha5Ln=1,_Alpha6Ln=1, epsilon=3.e-8):
 
     # Define quantities that are reusable for each partial_ampphase call
-    h = wg.get_h22(x, _Lambda)
+    h = wg.get_h22(x, _Alpha5Ln,_Alpha6Ln)
     phi = h.phase
 
     # Partial derivative (via central finite differencing) helper fxn 
@@ -55,7 +55,7 @@ def get_fastFisher(x, _Lambda=0, epsilon=3.e-8):
     def partial_ampphase(mode, x, deriv_ndx, e):
         assert mode in ['A','phi'], f"Partial must be specified to be evaluated on AmpPhaseFDWaveform.amp (\"A\") or AmpPhaseFDWaveform.phase (\"phi\")."
 
-        d_kh=wg.partial_FD_waveform(x, deriv_ndx, _Lambda, e)
+        d_kh=wg.partial_FD_waveform(x, deriv_ndx, _Alpha5Ln,_Alpha6Ln, e)
         if mode=='A':
             return np.real(d_kh * np.exp(-1.j * phi))
         if mode=='phi':
@@ -107,18 +107,18 @@ fast_lnprior = jax.jit(ln_prior)
 
 # likelihood
 
-x0_h22_0 = wg.get_h22(d.x_inj, _Lambda=0)
-x0_h22_1 = wg.get_h22(d.x_inj, _Lambda=1)
-dataByLambda={0: x0_h22_0, 1:x0_h22_1}
+x0_h22_0 = wg.get_h22(d.x_inj, _Alpha5Ln=1,_Alpha6Ln=1)
+x0_h22_1 = wg.get_h22(d.x_inj, _Alpha5Ln=1,_Alpha6Ln=0)
+dataByAlphas={(1,1): x0_h22_0, (1,0):x0_h22_1}
 
-def ln_likelihood(x, temperature=1.0, _Lambda=0, prior_recovery_test=False): # <- switch btwn True/False to toggle prior recover test
-    # Run sampler w/ const. likelihood and view corner plot to test for prior recovery
+def ln_likelihood(x, temperature=1.0, _Alpha5Ln=1,_Alpha6Ln=1, prior_recovery_test=False): # <- switch btwn True/False to toggle prior recover test
+    # To test for prior recovery: run sampler w/ const. likelihood and view corner plot--
+    # Then--are the sample distributions and marginals uniform? If yes, pass. If no, likelihood function is faulty
     if prior_recovery_test:
-        print(rf'lnlike shape {x0_h22_0.phase.shape[0]}')
-        return np.full(x0_h22_0.phase.shape[0], -1)
+        return 0.0
 
-    x_h22 = wg.get_h22(x, _Lambda)
-    x0_h22 = dataByLambda[_Lambda]
+    x_h22 = wg.get_h22(x, _Alpha5Ln,_Alpha6Ln)
+    x0_h22 = dataByAlphas[(_Alpha5Ln,_Alpha6Ln)]
 
     x0_amp, x0_phase = x0_h22.amp, x0_h22.phase
     x_amp, x_phase = x_h22.amp, x_h22.phase
@@ -129,8 +129,8 @@ def ln_likelihood(x, temperature=1.0, _Lambda=0, prior_recovery_test=False): # <
 
 # 8/4/26 cut off calculation of these log-likelihood functions at f_{IM} independently of waveform
 
-def loglike_untempered(x, _Lambda=0):
-    x_h22 = wg.get_h22(x, _Lambda)
+def loglike_untempered(x, _Alpha5Ln=1,_Alpha6Ln=1):
+    x_h22 = wg.get_h22(x, _Alpha5Ln,_Alpha6Ln)
     x_amp, x_phase = x_h22.amp, x_h22.phase
     integrand = (x_amp**2 + d.data_amp**2 - 2 * x_amp * d.data_amp * np.cos(x_phase - d.data_phase)) / S
     lnlike = -2. * np.sum(integrand) * wg.df
@@ -138,8 +138,8 @@ def loglike_untempered(x, _Lambda=0):
 
 
 # posterior
-def ln_posterior(x, temperature=1.0, _Lambda=0):
+def ln_posterior(x, temperature=1.0, _Alpha5Ln=1,_Alpha6Ln=1):
     if np.any(x < wg.x_mins) or np.any(x > wg.x_maxs):
         return -np.inf
     else:
-        return ln_likelihood(x, temperature, _Lambda)
+        return ln_likelihood(x, temperature, _Alpha5Ln,_Alpha6Ln)
